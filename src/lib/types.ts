@@ -50,6 +50,7 @@ export interface Reservation {
   channel: ReservationChannel;
   customer_notes: string | null;
   internal_notes: string | null;
+  table_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -187,3 +188,23 @@ export const HANDOFF_REASONS = [
   "Cliente pide hablar con persona",
   "Otra petición especial",
 ];
+
+export interface Zone {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  sort_order: number;
+  is_active: boolean;
+}
+
+export interface RestaurantTable {
+  id: string;
+  restaurant_id: string;
+  zone_id: string;
+  label: string;
+  min_capacity: number;
+  max_capacity: number;
+  is_active: boolean;
+  internal_notes: string | null;
+  sort_order: number;
+}

@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import type { Reservation, ReservationStatus, ReservationChannel } from "@/lib/types";
+import type { Reservation, ReservationStatus, ReservationChannel, Zone, RestaurantTable } from "@/lib/types";
 import { RESERVATION_STATUS_LABELS, CHANNEL_LABELS } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -21,6 +21,16 @@ export function ReservationFormDialog({
 }) {
   const [v, setV] = useState<Partial<Reservation>>({});
   const [saving, setSaving] = useState(false);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+
+  useEffect(() => {
+    if (!open || !restaurantId) return;
+    supabase.from("restaurant_zones").select("*").eq("restaurant_id", restaurantId).order("sort_order")
+      .then(({ data }) => setZones((data as Zone[]) ?? []));
+    supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId).order("sort_order")
+      .then(({ data }) => setTables((data as RestaurantTable[]) ?? []));
+  }, [open, restaurantId]);
 
   useEffect(() => {
     setV(initial ?? {
@@ -28,7 +38,7 @@ export function ReservationFormDialog({
       reservation_date: new Date().toISOString().slice(0,10),
       reservation_time: "20:00", party_size: 2,
       status: "pending" as ReservationStatus, channel: "manual" as ReservationChannel,
-      customer_notes: "", internal_notes: "",
+      customer_notes: "", internal_notes: "", table_id: null,
     });
   }, [initial, open]);
 
@@ -67,6 +77,31 @@ export function ReservationFormDialog({
             </Select>
           </div>
           <div className="col-span-2 space-y-1.5"><Label>Notas del cliente</Label><Textarea rows={2} value={v.customer_notes ?? ""} onChange={(e) => setV({ ...v, customer_notes: e.target.value })} /></div>
+          <div className="col-span-2 space-y-1.5"><Label>Mesa</Label>
+            <Select value={v.table_id ?? "none"} onValueChange={(x) => setV({ ...v, table_id: x === "none" ? null : x })}>
+              <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Sin asignar</SelectItem>
+                {zones.map(z => {
+                  const zt = tables.filter(t => t.zone_id === z.id && t.is_active);
+                  if (zt.length === 0) return null;
+                  return (
+                    <div key={z.id}>
+                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{z.name}</div>
+                      {zt.map(t => {
+                        const over = (v.party_size ?? 0) > t.max_capacity;
+                        return (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.label} · {t.min_capacity}-{t.max_capacity} pax{over ? " ⚠ excede capacidad" : ""}
+                          </SelectItem>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="col-span-2 space-y-1.5"><Label>Notas internas</Label><Textarea rows={2} value={v.internal_notes ?? ""} onChange={(e) => setV({ ...v, internal_notes: e.target.value })} /></div>
         </div>
         <DialogFooter>
