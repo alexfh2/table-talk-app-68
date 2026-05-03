@@ -50,6 +50,7 @@ export interface Reservation {
   channel: ReservationChannel;
   customer_notes: string | null;
   internal_notes: string | null;
+  table_id: string | null;
   created_at: string;
   updated_at: string;
 }
