@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { SchedulePanel } from "@/components/restaurant-settings/SchedulePanel";
 import { FaqsPanel } from "@/components/restaurant-settings/FaqsPanel";
+import { TablesPanel } from "@/components/restaurant-settings/TablesPanel";
 import { RestaurantForm } from "@/components/RestaurantForm";
 import { getAgentSettings, getNotificationSettings, getRestaurant } from "@/lib/queries";
 import type { AgentSettings, NotificationSettings, Restaurant, SummaryFrequency } from "@/lib/types";
@@ -60,6 +61,7 @@ export default function RestaurantSettings() {
       <Tabs defaultValue="schedule">
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="schedule">Horarios y capacidad</TabsTrigger>
+          <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="faqs">FAQs</TabsTrigger>
           <TabsTrigger value="agent">Tono del agente</TabsTrigger>
           <TabsTrigger value="notifications">Notificaciones</TabsTrigger>
@@ -67,6 +69,7 @@ export default function RestaurantSettings() {
         </TabsList>
 
         <TabsContent value="schedule"><SchedulePanel restaurantId={rid} /></TabsContent>
+        <TabsContent value="tables"><TablesPanel restaurantId={rid} /></TabsContent>
         <TabsContent value="faqs"><FaqsPanel restaurantId={rid} /></TabsContent>
 
         <TabsContent value="agent">
