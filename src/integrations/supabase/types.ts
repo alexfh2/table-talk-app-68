@@ -379,6 +379,7 @@ export type Database = {
           reservation_time: string
           restaurant_id: string
           status: Database["public"]["Enums"]["reservation_status"]
+          table_id: string | null
           updated_at: string
         }
         Insert: {
@@ -394,6 +395,7 @@ export type Database = {
           reservation_time: string
           restaurant_id: string
           status?: Database["public"]["Enums"]["reservation_status"]
+          table_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -409,6 +411,7 @@ export type Database = {
           reservation_time?: string
           restaurant_id?: string
           status?: Database["public"]["Enums"]["reservation_status"]
+          table_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -473,6 +476,78 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      restaurant_tables: {
+        Row: {
+          created_at: string
+          id: string
+          internal_notes: string | null
+          is_active: boolean
+          label: string
+          max_capacity: number
+          min_capacity: number
+          restaurant_id: string
+          sort_order: number
+          updated_at: string
+          zone_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          internal_notes?: string | null
+          is_active?: boolean
+          label: string
+          max_capacity?: number
+          min_capacity?: number
+          restaurant_id: string
+          sort_order?: number
+          updated_at?: string
+          zone_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          internal_notes?: string | null
+          is_active?: boolean
+          label?: string
+          max_capacity?: number
+          min_capacity?: number
+          restaurant_id?: string
+          sort_order?: number
+          updated_at?: string
+          zone_id?: string
+        }
+        Relationships: []
+      }
+      restaurant_zones: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          restaurant_id: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          restaurant_id: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          restaurant_id?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       restaurants: {
         Row: {
