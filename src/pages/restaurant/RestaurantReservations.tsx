@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ReservationFormDialog } from "@/components/ReservationFormDialog";
 import { listReservations } from "@/lib/queries";
 import { useAuth } from "@/hooks/useAuth";
-import { CHANNEL_LABELS, RESERVATION_STATUS_LABELS, type Reservation, type ReservationStatus } from "@/lib/types";
+import { CHANNEL_LABELS, RESERVATION_STATUS_LABELS, type Reservation, type ReservationStatus, type RestaurantTable, type Zone } from "@/lib/types";
 import { Plus, Pencil, Ban, UserX } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -19,13 +19,28 @@ export default function RestaurantReservations() {
   const { profile } = useAuth();
   const rid = profile?.restaurant_id ?? "";
   const [items, setItems] = useState<Reservation[]>([]);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
   const [status, setStatus] = useState<ReservationStatus | "all">("all");
   const [date, setDate] = useState("");
 
-  function reload() { if (rid) listReservations(rid).then(setItems); }
+  function reload() {
+    if (!rid) return;
+    listReservations(rid).then(setItems);
+    supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid).then(({ data }) => setTables((data ?? []) as RestaurantTable[]));
+    supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid).then(({ data }) => setZones((data ?? []) as Zone[]));
+  }
   useEffect(reload, [rid]);
+
+  function tableLabel(id: string | null): string {
+    if (!id) return "—";
+    const t = tables.find(x => x.id === id);
+    if (!t) return "—";
+    const z = zones.find(z => z.id === t.zone_id);
+    return z ? `${t.label} · ${z.name}` : t.label;
+  }
 
   const filtered = items.filter(r =>
     (status === "all" || r.status === status) &&
@@ -57,7 +72,7 @@ export default function RestaurantReservations() {
           <Table>
             <TableHeader><TableRow>
               <TableHead>Cliente</TableHead><TableHead>Teléfono</TableHead><TableHead>Fecha</TableHead><TableHead>Hora</TableHead>
-              <TableHead>Personas</TableHead><TableHead>Estado</TableHead><TableHead>Canal</TableHead><TableHead>Notas</TableHead>
+              <TableHead>Personas</TableHead><TableHead>Mesa</TableHead><TableHead>Estado</TableHead><TableHead>Canal</TableHead><TableHead>Notas</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow></TableHeader>
             <TableBody>
@@ -68,6 +83,7 @@ export default function RestaurantReservations() {
                   <TableCell>{format(new Date(r.reservation_date), "dd/MM/yyyy")}</TableCell>
                   <TableCell>{r.reservation_time.slice(0,5)}</TableCell>
                   <TableCell>{r.party_size}</TableCell>
+                  <TableCell className="text-xs">{tableLabel(r.table_id)}</TableCell>
                   <TableCell><StatusBadge kind="reservation" value={r.status} /></TableCell>
                   <TableCell className="text-muted-foreground text-xs">{CHANNEL_LABELS[r.channel]}</TableCell>
                   <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground">{r.customer_notes ?? "—"}</TableCell>
@@ -78,7 +94,7 @@ export default function RestaurantReservations() {
                   </TableCell>
                 </TableRow>
               ))}
-              {filtered.length === 0 && <TableRow><TableCell colSpan={9} className="text-center py-10 text-muted-foreground">Sin reservas.</TableCell></TableRow>}
+              {filtered.length === 0 && <TableRow><TableCell colSpan={10} className="text-center py-10 text-muted-foreground">Sin reservas.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </div>

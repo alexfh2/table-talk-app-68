@@ -4,7 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { listReservations } from "@/lib/queries";
-import type { Reservation } from "@/lib/types";
+import type { Reservation, RestaurantTable, Zone } from "@/lib/types";
+import { supabase } from "@/integrations/supabase/client";
 import { ReservationFormDialog } from "@/components/ReservationFormDialog";
 import { StatusBadge } from "@/components/StatusBadge";
 import { addDays, format, startOfWeek } from "date-fns";
@@ -16,11 +17,26 @@ export default function RestaurantCalendar() {
   const [view, setView] = useState<"day" | "week">("day");
   const [date, setDate] = useState(new Date());
   const [items, setItems] = useState<Reservation[]>([]);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
 
-  function reload() { if (rid) listReservations(rid).then(setItems); }
+  function reload() {
+    if (!rid) return;
+    listReservations(rid).then(setItems);
+    supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid).then(({ data }) => setTables((data ?? []) as RestaurantTable[]));
+    supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid).then(({ data }) => setZones((data ?? []) as Zone[]));
+  }
   useEffect(reload, [rid]);
+
+  function tableLabel(id: string | null): string | null {
+    if (!id) return null;
+    const t = tables.find(x => x.id === id);
+    if (!t) return null;
+    const z = zones.find(z => z.id === t.zone_id);
+    return z ? `${t.label} · ${z.name}` : t.label;
+  }
 
   const days = view === "day" ? [date] : Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(date, { weekStartsOn: 1 }), i));
   const hours = Array.from({ length: 14 }, (_, i) => i + 10); // 10:00 - 23:00
@@ -57,6 +73,9 @@ export default function RestaurantCalendar() {
                     <button key={r.id} onClick={() => { setEditing(r); setOpen(true); }} className="w-full text-left rounded-md border bg-card hover:bg-accent/40 px-2 py-1">
                       <div className="flex items-center justify-between gap-1"><span className="text-xs font-medium truncate">{r.reservation_time.slice(0,5)} · {r.customer_name}</span></div>
                       <div className="flex items-center justify-between mt-0.5"><span className="text-[11px] text-muted-foreground">{r.party_size}p</span><StatusBadge kind="reservation" value={r.status} /></div>
+                      {tableLabel(r.table_id) && (
+                        <div className="text-[11px] text-muted-foreground truncate mt-0.5">🪑 {tableLabel(r.table_id)}</div>
+                      )}
                     </button>
                   ))}
                 </div>
