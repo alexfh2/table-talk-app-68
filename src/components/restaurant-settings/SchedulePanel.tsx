@@ -76,6 +76,7 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
           slot_duration_minutes: r.slot_duration_minutes,
           booking_mode: r.booking_mode,
           shift_times: r.shift_times,
+          service_period: r.service_period,
         })
         .eq("id", r.id);
     }
