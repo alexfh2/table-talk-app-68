@@ -66,6 +66,8 @@ export interface ScheduleRow {
   max_guests_per_slot: number | null;
   max_reservations_per_slot: number | null;
   slot_duration_minutes: number | null;
+  booking_mode: "slots" | "shifts";
+  shift_times: string[] | null;
 }
 
 export interface Faq {
