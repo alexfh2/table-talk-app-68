@@ -68,6 +68,7 @@ export interface ScheduleRow {
   slot_duration_minutes: number | null;
   booking_mode: "slots" | "shifts";
   shift_times: string[] | null;
+  service_period: "lunch" | "dinner";
 }
 
 export interface Faq {
