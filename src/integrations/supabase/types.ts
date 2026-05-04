@@ -426,6 +426,7 @@ export type Database = {
       }
       restaurant_schedule: {
         Row: {
+          booking_mode: string
           closing_time: string | null
           created_at: string
           day_of_week: number
@@ -436,10 +437,12 @@ export type Database = {
           opening_time: string | null
           restaurant_id: string
           service_name: string | null
+          shift_times: string[] | null
           slot_duration_minutes: number | null
           updated_at: string
         }
         Insert: {
+          booking_mode?: string
           closing_time?: string | null
           created_at?: string
           day_of_week: number
@@ -450,10 +453,12 @@ export type Database = {
           opening_time?: string | null
           restaurant_id: string
           service_name?: string | null
+          shift_times?: string[] | null
           slot_duration_minutes?: number | null
           updated_at?: string
         }
         Update: {
+          booking_mode?: string
           closing_time?: string | null
           created_at?: string
           day_of_week?: number
@@ -464,6 +469,7 @@ export type Database = {
           opening_time?: string | null
           restaurant_id?: string
           service_name?: string | null
+          shift_times?: string[] | null
           slot_duration_minutes?: number | null
           updated_at?: string
         }
