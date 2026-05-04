@@ -437,6 +437,7 @@ export type Database = {
           opening_time: string | null
           restaurant_id: string
           service_name: string | null
+          service_period: string
           shift_times: string[] | null
           slot_duration_minutes: number | null
           updated_at: string
@@ -453,6 +454,7 @@ export type Database = {
           opening_time?: string | null
           restaurant_id: string
           service_name?: string | null
+          service_period?: string
           shift_times?: string[] | null
           slot_duration_minutes?: number | null
           updated_at?: string
@@ -469,6 +471,7 @@ export type Database = {
           opening_time?: string | null
           restaurant_id?: string
           service_name?: string | null
+          service_period?: string
           shift_times?: string[] | null
           slot_duration_minutes?: number | null
           updated_at?: string
