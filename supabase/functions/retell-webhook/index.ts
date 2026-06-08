@@ -216,12 +216,45 @@ async function cancelReservation(p: Payload) {
 
 async function getRestaurantInfo(p: Payload) {
   if (!p.restaurant_id) return json({ ok: false, error: "missing_restaurant_id" }, 400);
-  const [{ data: restaurant }, { data: schedule }, { data: faqs }] = await Promise.all([
-    supabase.from("restaurants").select("*").eq("id", p.restaurant_id).maybeSingle(),
-    supabase.from("restaurant_schedule").select("*").eq("restaurant_id", p.restaurant_id).order("day_of_week"),
-    supabase.from("faqs").select("*").eq("restaurant_id", p.restaurant_id).eq("is_active", true),
+  const rid = p.restaurant_id;
+  const [
+    { data: restaurant },
+    { data: schedule },
+    { data: faqs },
+    { data: zones },
+    { data: tables },
+    { data: blocked_dates },
+    { data: agent_settings },
+    { data: notification_settings },
+    { data: external_calendar },
+  ] = await Promise.all([
+    supabase.from("restaurants").select("*").eq("id", rid).maybeSingle(),
+    supabase.from("restaurant_schedule").select("*").eq("restaurant_id", rid).order("day_of_week"),
+    supabase.from("faqs").select("*").eq("restaurant_id", rid).eq("is_active", true),
+    supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid),
+    supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid),
+    supabase.from("blocked_dates").select("*").eq("restaurant_id", rid).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
+    supabase.from("agent_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
+    supabase.from("notification_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
+    supabase.from("external_calendar_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
   ]);
-  return json({ ok: true, restaurant, schedule: schedule ?? [], faqs: faqs ?? [] });
+
+  const total_capacity = (tables ?? []).reduce((sum, t: any) => sum + (t.capacity ?? 0), 0);
+  const tables_count = (tables ?? []).length;
+
+  return json({
+    ok: true,
+    restaurant,
+    schedule: schedule ?? [],
+    faqs: faqs ?? [],
+    zones: zones ?? [],
+    tables: tables ?? [],
+    capacity: { total_capacity, tables_count },
+    blocked_dates: blocked_dates ?? [],
+    agent_settings,
+    notification_settings,
+    external_calendar,
+  });
 }
 
 Deno.serve(async (req) => {
