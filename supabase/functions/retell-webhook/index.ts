@@ -40,10 +40,52 @@ interface Payload {
   date?: string;
 }
 
+function dayOfWeekFromISO(d: string): number {
+  // Avoid TZ surprises: compute UTC day-of-week from YYYY-MM-DD
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(Date.UTC(y, (m ?? 1) - 1, day ?? 1)).getUTCDay();
+}
+
+async function validateSlot(restaurantId: string, date: string, time: string) {
+  const dow = dayOfWeekFromISO(date);
+  const [{ data: schedule }, { data: blocked }] = await Promise.all([
+    supabase.from("restaurant_schedule").select("*").eq("restaurant_id", restaurantId).eq("day_of_week", dow),
+    supabase.from("blocked_dates").select("*").eq("restaurant_id", restaurantId).eq("blocked_date", date),
+  ]);
+  if ((blocked?.length ?? 0) > 0) {
+    return { ok: false, error: "date_blocked", message: "El restaurante no acepta reservas ese día (fecha bloqueada)." };
+  }
+  const openServices = (schedule ?? []).filter((s: any) => s.is_open);
+  if (openServices.length === 0) {
+    return { ok: false, error: "closed_day", message: "El restaurante está cerrado ese día de la semana." };
+  }
+  const t = time.slice(0, 5);
+  const inService = openServices.some((s: any) => {
+    const open = (s.opening_time ?? "").slice(0, 5);
+    const close = (s.closing_time ?? "").slice(0, 5);
+    return open && close && t >= open && t <= close;
+  });
+  if (!inService) {
+    return {
+      ok: false,
+      error: "out_of_service_hours",
+      message: "La hora solicitada está fuera del horario de servicio.",
+      services: openServices.map((s: any) => ({
+        service_name: s.service_name,
+        opening_time: s.opening_time,
+        closing_time: s.closing_time,
+      })),
+    };
+  }
+  return { ok: true as const };
+}
+
 async function createReservation(p: Payload) {
   if (!p.restaurant_id || !p.customer_name || !p.reservation_date || !p.reservation_time || !p.party_size) {
     return json({ ok: false, error: "missing_fields" }, 400);
   }
+  const v = await validateSlot(p.restaurant_id, p.reservation_date, p.reservation_time);
+  if (!v.ok) return json(v, 409);
   const { data, error } = await supabase
     .from("reservations")
     .insert({
@@ -89,6 +131,26 @@ async function checkAvailability(p: Payload) {
 
 async function updateReservation(p: Payload) {
   if (!p.reservation_id) return json({ ok: false, error: "missing_reservation_id" }, 400);
+  if (p.reservation_date || p.reservation_time) {
+    // Need both effective date & time to validate; fetch current if one is missing
+    let date = p.reservation_date;
+    let time = p.reservation_time;
+    let restaurantId = p.restaurant_id;
+    if (!date || !time || !restaurantId) {
+      const { data: cur } = await supabase
+        .from("reservations")
+        .select("restaurant_id, reservation_date, reservation_time")
+        .eq("id", p.reservation_id)
+        .maybeSingle();
+      date = date ?? cur?.reservation_date;
+      time = time ?? cur?.reservation_time;
+      restaurantId = restaurantId ?? cur?.restaurant_id;
+    }
+    if (date && time && restaurantId) {
+      const v = await validateSlot(restaurantId, date, time);
+      if (!v.ok) return json(v, 409);
+    }
+  }
   const patch: Record<string, unknown> = { status: "modified" };
   if (p.reservation_date) patch.reservation_date = p.reservation_date;
   if (p.reservation_time) patch.reservation_time = p.reservation_time;
