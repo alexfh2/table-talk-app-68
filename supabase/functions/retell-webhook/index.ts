@@ -107,7 +107,7 @@ async function createReservation(p: Payload) {
 
 async function checkAvailability(p: Payload) {
   if (!p.restaurant_id || !p.date) return json({ ok: false, error: "missing_fields" }, 400);
-  const day = new Date(p.date + "T00:00:00").getDay();
+  const day = dayOfWeekFromISO(p.date);
 
   const [{ data: schedule }, { data: blocked }, { data: reservations }] = await Promise.all([
     supabase.from("restaurant_schedule").select("*").eq("restaurant_id", p.restaurant_id).eq("day_of_week", day),
@@ -120,11 +120,46 @@ async function checkAvailability(p: Payload) {
       .not("status", "in", "(cancelled,no_show)"),
   ]);
 
+  const isBlocked = (blocked?.length ?? 0) > 0;
+  if (isBlocked) {
+    return json({ ok: true, date: p.date, available: false, reason: "date_blocked", message: "El restaurante no acepta reservas ese día (fecha bloqueada)." });
+  }
+
+  const openServices = (schedule ?? []).filter((s: any) => s.is_open);
+  if (openServices.length === 0) {
+    return json({ ok: true, date: p.date, available: false, reason: "closed_day", message: "El restaurante está cerrado ese día de la semana." });
+  }
+
+  // If time is provided, validate it falls within open service hours
+  if (p.reservation_time) {
+    const t = p.reservation_time.slice(0, 5);
+    const inService = openServices.some((s: any) => {
+      const open = (s.opening_time ?? "").slice(0, 5);
+      const close = (s.closing_time ?? "").slice(0, 5);
+      return open && close && t >= open && t <= close;
+    });
+    if (!inService) {
+      return json({
+        ok: true,
+        date: p.date,
+        time: p.reservation_time,
+        available: false,
+        reason: "out_of_service_hours",
+        message: "La hora solicitada está fuera del horario de servicio.",
+        services: openServices.map((s: any) => ({
+          service_name: s.service_name,
+          opening_time: s.opening_time,
+          closing_time: s.closing_time,
+        })),
+      });
+    }
+  }
+
   return json({
     ok: true,
     date: p.date,
-    is_blocked: (blocked?.length ?? 0) > 0,
-    services: schedule ?? [],
+    available: true,
+    services: openServices,
     existing_reservations: reservations ?? [],
   });
 }
