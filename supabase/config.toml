@@ -2,3 +2,6 @@ project_id = "cqcnpieswvwygecyzpfa"
 
 [functions.seed-demo-users]
 verify_jwt = false
+
+[functions.retell-webhook]
+verify_jwt = false
