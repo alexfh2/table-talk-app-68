@@ -233,7 +233,7 @@ async function getRestaurantInfo(p: Payload) {
     supabase.from("faqs").select("*").eq("restaurant_id", rid).eq("is_active", true),
     supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid),
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid),
-    supabase.from("blocked_dates").select("*").eq("restaurant_id", rid).gte("blocked_date", new Date().toISOString().slice(0, 10)).order("blocked_date"),
+    supabase.from("blocked_dates").select("*").eq("restaurant_id", rid).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
     supabase.from("agent_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
     supabase.from("notification_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
     supabase.from("external_calendar_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
