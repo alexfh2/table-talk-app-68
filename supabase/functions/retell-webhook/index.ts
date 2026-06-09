@@ -22,7 +22,8 @@ type Action =
   | "check_availability"
   | "update_reservation"
   | "cancel_reservation"
-  | "get_restaurant_info";
+  | "get_restaurant_info"
+  | "get_restaurant_info_by_phone";
 
 interface Payload {
   action: Action;
@@ -38,6 +39,8 @@ interface Payload {
   reservation_id?: string;
   // availability
   date?: string;
+  // lookup by phone
+  phone?: string;
 }
 
 function dayOfWeekFromISO(d: string): number {
@@ -214,6 +217,77 @@ async function cancelReservation(p: Payload) {
   return json({ ok: true, reservation: data });
 }
 
+async function getRestaurantInfoByPhone(p: Payload) {
+  if (!p.phone) return json({ ok: false, error: "missing_phone" }, 400);
+
+  // Normalize phone: keep only digits and optional leading +
+  const normalized = p.phone.replace(/[^\d+]/g, "");
+  const searchPattern = `%${normalized}%`;
+
+  // Search by exact or partial match on main_phone
+  const { data: restaurants, error: rErr } = await supabase
+    .from("restaurants")
+    .select("id")
+    .ilike("main_phone", searchPattern);
+
+  if (rErr) return json({ ok: false, error: rErr.message }, 400);
+
+  if (!restaurants || restaurants.length === 0) {
+    return json({ ok: false, error: "restaurant_not_found", message: "No se encontró ningún restaurante con ese teléfono." }, 404);
+  }
+
+  if (restaurants.length > 1) {
+    return json({
+      ok: false,
+      error: "multiple_restaurants_found",
+      message: "Se encontraron varios restaurantes con ese teléfono. Especifique el número completo o use restaurant_id.",
+      matches: restaurants.map((r: any) => r.id),
+    }, 409);
+  }
+
+  const rid = (restaurants[0] as any).id;
+
+  // Reuse existing getRestaurantInfo logic inline
+  const [
+    { data: restaurant },
+    { data: schedule },
+    { data: faqs },
+    { data: zones },
+    { data: tables },
+    { data: blocked_dates },
+    { data: agent_settings },
+    { data: notification_settings },
+    { data: external_calendar },
+  ] = await Promise.all([
+    supabase.from("restaurants").select("*").eq("id", rid).maybeSingle(),
+    supabase.from("restaurant_schedule").select("*").eq("restaurant_id", rid).order("day_of_week"),
+    supabase.from("faqs").select("*").eq("restaurant_id", rid).eq("is_active", true),
+    supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid),
+    supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid),
+    supabase.from("blocked_dates").select("*").eq("restaurant_id", rid).gte("date", new Date().toISOString().slice(0, 10)).order("date"),
+    supabase.from("agent_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
+    supabase.from("notification_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
+    supabase.from("external_calendar_settings").select("*").eq("restaurant_id", rid).maybeSingle(),
+  ]);
+
+  const total_capacity = (tables ?? []).reduce((sum, t: any) => sum + (t.capacity ?? 0), 0);
+  const tables_count = (tables ?? []).length;
+
+  return json({
+    ok: true,
+    restaurant,
+    schedule: schedule ?? [],
+    faqs: faqs ?? [],
+    zones: zones ?? [],
+    tables: tables ?? [],
+    capacity: { total_capacity, tables_count },
+    blocked_dates: blocked_dates ?? [],
+    agent_settings,
+    notification_settings,
+    external_calendar,
+  });
+}
+
 async function getRestaurantInfo(p: Payload) {
   if (!p.restaurant_id) return json({ ok: false, error: "missing_restaurant_id" }, 400);
   const rid = p.restaurant_id;
@@ -284,6 +358,7 @@ Deno.serve(async (req) => {
       case "update_reservation": return await updateReservation(payload);
       case "cancel_reservation": return await cancelReservation(payload);
       case "get_restaurant_info": return await getRestaurantInfo(payload);
+      case "get_restaurant_info_by_phone": return await getRestaurantInfoByPhone(payload);
       default: return json({ ok: false, error: "unknown_action" }, 400);
     }
   } catch (e) {
