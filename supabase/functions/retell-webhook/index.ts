@@ -22,7 +22,8 @@ type Action =
   | "check_availability"
   | "update_reservation"
   | "cancel_reservation"
-  | "get_restaurant_info";
+  | "get_restaurant_info"
+  | "get_restaurant_info_by_phone";
 
 interface Payload {
   action: Action;
