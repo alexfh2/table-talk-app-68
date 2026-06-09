@@ -39,6 +39,8 @@ interface Payload {
   reservation_id?: string;
   // availability
   date?: string;
+  // lookup by phone
+  phone?: string;
 }
 
 function dayOfWeekFromISO(d: string): number {
