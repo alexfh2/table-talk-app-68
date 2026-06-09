@@ -358,6 +358,7 @@ Deno.serve(async (req) => {
       case "update_reservation": return await updateReservation(payload);
       case "cancel_reservation": return await cancelReservation(payload);
       case "get_restaurant_info": return await getRestaurantInfo(payload);
+      case "get_restaurant_info_by_phone": return await getRestaurantInfoByPhone(payload);
       default: return json({ ok: false, error: "unknown_action" }, 400);
     }
   } catch (e) {
