@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useSearchParams } from "react-router-dom";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente",
