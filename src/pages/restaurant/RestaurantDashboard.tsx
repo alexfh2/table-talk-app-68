@@ -213,8 +213,14 @@ export default function RestaurantDashboard() {
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 6);
 
-  function openCreate() {
-    setDrawerMode("create"); setDrawerInitial(null); setDrawerOpen(true);
+  function openCreate(time?: string) {
+    setDrawerMode("create");
+    setDrawerInitial(null);
+    setCreateDefaults({
+      reservation_date: selectedISO,
+      ...(time ? { reservation_time: `${time}:00` } : {}),
+    });
+    setDrawerOpen(true);
   }
   function openEdit(r: Reservation) {
     setDrawerMode("edit"); setDrawerInitial(r); setDrawerOpen(true);
@@ -256,6 +262,7 @@ export default function RestaurantDashboard() {
 
   function canSeat(r: Reservation) {
     if (r.status === "requires_human" || r.status === "cancelled" || r.status === "no_show") return false;
+    if (!isViewingToday) return false;
     const isToday = r.reservation_date === todayISO;
     if (!isToday) return false;
     const [h, m] = r.reservation_time.split(":").map(Number);
