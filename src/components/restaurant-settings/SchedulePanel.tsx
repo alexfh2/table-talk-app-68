@@ -144,17 +144,17 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
                 <p className="text-[11px] text-muted-foreground">Las reservas solo se aceptarán a las horas exactas marcadas (ej: 13:30 y 15:00).</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
-                <div className="space-y-1.5"><Label className="text-xs">Máx. comensales/turno</Label><Input type="number" value={r.max_guests_per_slot ?? 0} onChange={(e) => update(r.id, { max_guests_per_slot: Number(e.target.value) })} /></div>
-                <div className="space-y-1.5"><Label className="text-xs">Máx. reservas/turno</Label><Input type="number" value={r.max_reservations_per_slot ?? 0} onChange={(e) => update(r.id, { max_reservations_per_slot: Number(e.target.value) })} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">Máximo de personas por turno</Label><Input type="number" value={r.max_guests_per_slot ?? 0} onChange={(e) => update(r.id, { max_guests_per_slot: Number(e.target.value) })} /></div>
+                <div className="space-y-1.5"><Label className="text-xs">Máximo de reservas por turno</Label><Input type="number" value={r.max_reservations_per_slot ?? 0} onChange={(e) => update(r.id, { max_reservations_per_slot: Number(e.target.value) })} /></div>
               </div>
             </div>
           </TabsContent>
 
           <TabsContent value="slots">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
-              <div className="space-y-1.5"><Label className="text-xs">Franja (min)</Label><Input type="number" value={r.slot_duration_minutes ?? 30} onChange={(e) => update(r.id, { slot_duration_minutes: Number(e.target.value) })} /></div>
-              <div className="space-y-1.5"><Label className="text-xs">Máx. comensales/franja</Label><Input type="number" value={r.max_guests_per_slot ?? 0} onChange={(e) => update(r.id, { max_guests_per_slot: Number(e.target.value) })} /></div>
-              <div className="space-y-1.5"><Label className="text-xs">Máx. reservas/franja</Label><Input type="number" value={r.max_reservations_per_slot ?? 0} onChange={(e) => update(r.id, { max_reservations_per_slot: Number(e.target.value) })} /></div>
+              <div className="space-y-1.5"><Label className="text-xs">Cada cuánto aceptas reservas (min)</Label><Input type="number" value={r.slot_duration_minutes ?? 30} onChange={(e) => update(r.id, { slot_duration_minutes: Number(e.target.value) })} /></div>
+              <div className="space-y-1.5"><Label className="text-xs">Máximo de personas por intervalo</Label><Input type="number" value={r.max_guests_per_slot ?? 0} onChange={(e) => update(r.id, { max_guests_per_slot: Number(e.target.value) })} /></div>
+              <div className="space-y-1.5"><Label className="text-xs">Máximo de reservas por intervalo</Label><Input type="number" value={r.max_reservations_per_slot ?? 0} onChange={(e) => update(r.id, { max_reservations_per_slot: Number(e.target.value) })} /></div>
             </div>
           </TabsContent>
         </Tabs>

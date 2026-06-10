@@ -119,27 +119,29 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
       <Card>
         <CardContent className="p-4 flex flex-wrap gap-3 items-center justify-between">
           <div>
-            <p className="font-medium text-sm">Mapa virtual de mesas</p>
-            <p className="text-xs text-muted-foreground">Crea zonas (interior, terraza, patio…) y dentro de cada zona define las mesas con su capacidad. Puedes empezar de cero o generar un mapa de ejemplo y editarlo.</p>
+            <p className="font-medium text-sm">Zonas y mesas</p>
+            <p className="text-xs text-muted-foreground">Define las zonas del restaurante y las mesas disponibles para asignar reservas.</p>
           </div>
           <div className="flex gap-2">
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm"><Wand2 className="h-4 w-4 mr-1" />Generar mapa demo</Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>¿Reemplazar zonas y mesas actuales?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Se borrarán las zonas y mesas existentes y se creará un mapa de ejemplo (Interior 8, Terraza 6, Porche playa 4) que después puedes editar libremente.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction onClick={generateDemo}>Generar</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            {zones.length === 0 && tables.length === 0 && (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm"><Wand2 className="h-4 w-4 mr-1" />Generar mapa demo</Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Generar mapa de ejemplo</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Se creará un mapa de ejemplo (Interior 8, Terraza 6, Porche playa 4) que después puedes editar libremente.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction onClick={generateDemo}>Generar</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             <Button size="sm" onClick={addZone}><Plus className="h-4 w-4 mr-1" />Añadir zona</Button>
           </div>
         </CardContent>
@@ -163,7 +165,7 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
                   <Switch checked={z.is_active} onCheckedChange={c => updateZone(z.id, { is_active: c })} />
                   <span className="text-xs text-muted-foreground">Activa</span>
                 </div>
-                <span className="text-xs text-muted-foreground">{zt.length} mesas · {total} pax máx.</span>
+                <span className="text-xs text-muted-foreground">{zt.length} mesas · {total} personas máx.</span>
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => addTable(z.id)}><Plus className="h-4 w-4 mr-1" />Añadir mesa</Button>
@@ -189,8 +191,8 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
               {zt.map(t => (
                 <div key={t.id} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end border rounded-lg p-3">
                   <div className="space-y-1.5"><Label className="text-xs">Etiqueta</Label><Input value={t.label} onChange={e => patchTable(t.id, { label: e.target.value })} /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">Mín. pax</Label><Input type="number" min={1} value={t.min_capacity} onChange={e => patchTable(t.id, { min_capacity: Number(e.target.value) })} /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">Máx. pax</Label><Input type="number" min={1} value={t.max_capacity} onChange={e => patchTable(t.id, { max_capacity: Number(e.target.value) })} /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Mín. personas</Label><Input type="number" min={1} value={t.min_capacity} onChange={e => patchTable(t.id, { min_capacity: Number(e.target.value) })} /></div>
+                  <div className="space-y-1.5"><Label className="text-xs">Máx. personas</Label><Input type="number" min={1} value={t.max_capacity} onChange={e => patchTable(t.id, { max_capacity: Number(e.target.value) })} /></div>
                   <div className="space-y-1.5 md:col-span-2"><Label className="text-xs">Notas</Label><Input value={t.internal_notes ?? ""} onChange={e => patchTable(t.id, { internal_notes: e.target.value })} placeholder="Junto a ventana…" /></div>
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">

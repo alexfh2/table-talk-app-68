@@ -12,10 +12,12 @@ export function RestaurantForm({
   initial,
   submitting,
   onSubmit,
+  hideAdminFields,
 }: {
   initial?: RestaurantFormValues;
   submitting?: boolean;
   onSubmit: (v: RestaurantFormValues) => void;
+  hideAdminFields?: boolean;
 }) {
   const [v, setV] = useState<RestaurantFormValues>({
     name: "",
@@ -53,33 +55,39 @@ export function RestaurantForm({
         <div className="space-y-1.5"><Label>Email del responsable</Label><Input type="email" value={v.manager_email ?? ""} onChange={set("manager_email")} /></div>
         <div className="space-y-1.5"><Label>WhatsApp del responsable</Label><Input value={v.manager_whatsapp ?? ""} onChange={set("manager_whatsapp")} /></div>
 
-        <div className="space-y-1.5">
-          <Label>Estado</Label>
-          <Select value={v.status} onValueChange={(x) => setV((p) => ({ ...p, status: x as RestaurantStatus }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="draft">Borrador</SelectItem>
-              <SelectItem value="active">Activo</SelectItem>
-              <SelectItem value="paused">Pausado</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Tipo de calendario</Label>
-          <Select value={v.calendar_type} onValueChange={(x) => setV((p) => ({ ...p, calendar_type: x as CalendarType }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="internal">Interno</SelectItem>
-              <SelectItem value="external">Externo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        {!hideAdminFields && (
+          <>
+            <div className="space-y-1.5">
+              <Label>Estado</Label>
+              <Select value={v.status} onValueChange={(x) => setV((p) => ({ ...p, status: x as RestaurantStatus }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">Borrador</SelectItem>
+                  <SelectItem value="active">Activo</SelectItem>
+                  <SelectItem value="paused">Pausado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Tipo de calendario</Label>
+              <Select value={v.calendar_type} onValueChange={(x) => setV((p) => ({ ...p, calendar_type: x as CalendarType }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="internal">Interno</SelectItem>
+                  <SelectItem value="external">Externo</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="space-y-1.5">
-        <Label>Notas internas</Label>
-        <Textarea value={v.notes_internal ?? ""} onChange={set("notes_internal")} rows={3} />
-      </div>
+      {!hideAdminFields && (
+        <div className="space-y-1.5">
+          <Label>Notas internas</Label>
+          <Textarea value={v.notes_internal ?? ""} onChange={set("notes_internal")} rows={3} />
+        </div>
+      )}
 
       <div className="flex justify-end">
         <Button type="submit" disabled={submitting}>{submitting ? "Guardando…" : "Guardar"}</Button>
