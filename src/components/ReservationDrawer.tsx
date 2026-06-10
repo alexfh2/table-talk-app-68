@@ -419,7 +419,7 @@ export function ReservationDrawer({
             </div>
           </section>
 
-          {isCreate && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0) && (
+          {(isCreate || isEdit) && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
             <div className="space-y-2">
               {evaluation.blockingReason && nameTouched && (
                 <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
@@ -431,7 +431,9 @@ export function ReservationDrawer({
                 <div className="rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2.5 text-sm text-terracotta space-y-1">
                   <p className="flex items-start gap-2 font-medium">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    Esta reserva requerirá revisión.
+                    {isEdit && statusManuallyChanged && v.status === "confirmed"
+                      ? "Esta reserva tiene motivos de revisión. Puedes guardarla como confirmada bajo tu responsabilidad."
+                      : "Esta reserva requerirá revisión."}
                   </p>
                   <ul className="ml-6 list-disc text-xs space-y-0.5">
                     {evaluation.reviewReasons.map((r) => <li key={r}>{r}</li>)}
