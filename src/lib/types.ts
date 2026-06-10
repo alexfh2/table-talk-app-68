@@ -69,6 +69,51 @@ export interface ScheduleRow {
   booking_mode: "slots" | "shifts";
   shift_times: string[] | null;
   service_period: "lunch" | "dinner";
+  season_id?: string | null;
+}
+
+export interface ScheduleSeason {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  start_date: string; // YYYY-MM-DD
+  end_date: string;
+  priority: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type ExceptionKind =
+  | "closed"
+  | "special_hours"
+  | "private_event"
+  | "extra_service";
+
+export type ExceptionServicePeriod = "lunch" | "dinner" | "both";
+
+export const EXCEPTION_KIND_LABELS: Record<ExceptionKind, string> = {
+  closed: "Día cerrado",
+  special_hours: "Horario especial",
+  private_event: "Evento privado",
+  extra_service: "Servicio extra",
+};
+
+export interface ScheduleException {
+  id: string;
+  restaurant_id: string;
+  date: string;
+  kind: ExceptionKind;
+  service_period: ExceptionServicePeriod | null;
+  reason: string | null;
+  is_full_day: boolean;
+  start_time: string | null;
+  end_time: string | null;
+  max_guests_per_slot: number | null;
+  max_reservations_per_slot: number | null;
+  slot_duration_minutes: number | null;
+  shift_times: string[] | null;
+  booking_mode: "slots" | "shifts" | null;
+  created_at?: string;
 }
 
 export interface Faq {
