@@ -588,34 +588,45 @@ export default function RestaurantDashboard() {
           </div>
 
           {/* Huecos disponibles */}
-          {(lunchSvc || dinnerSvc) && (
+          {(filter === "all" ? (lunchSvc || dinnerSvc) : true) && (
             <div className="rounded-2xl border border-border bg-card">
               <div className="px-4 py-3 border-b border-border">
                 <h3 className="font-medium text-sm">Huecos disponibles</h3>
               </div>
               <div className="p-3 space-y-3">
-                {[{ svc: lunchSvc, label: "Mediodía" }, { svc: dinnerSvc, label: "Noche" }].map(({ svc: s, label }) => {
-                  if (!s) return null;
-                  const slots = buildSlotList(s);
-                  const cap = s.max_guests_per_slot ?? 20;
-                  return (
-                    <div key={label}>
-                      <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
-                      {slots.slice(0, 6).map((t) => {
-                        const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
-                        const full = free === 0;
-                        return (
-                          <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
-                            <span className="tabular-nums text-foreground">{t}</span>
-                            <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
-                              {full ? "Completo" : `${free} libres`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                {[
+                  { svc: lunchSvc, label: "Mediodía", show: filter === "all" || filter === "lunch" },
+                  { svc: dinnerSvc, label: "Noche", show: filter === "all" || filter === "dinner" },
+                ]
+                  .filter((x) => x.show)
+                  .map(({ svc: s, label }) => {
+                    if (!s) {
+                      return (
+                        <p key={label} className="px-2 text-xs text-muted-foreground">
+                          {label} · Sin servicio
+                        </p>
+                      );
+                    }
+                    const slots = buildSlotList(s);
+                    const cap = s.max_guests_per_slot ?? 20;
+                    return (
+                      <div key={label}>
+                        <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                        {slots.slice(0, 6).map((t) => {
+                          const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
+                          const full = free === 0;
+                          return (
+                            <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
+                              <span className="tabular-nums text-foreground">{t}</span>
+                              <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
+                                {full ? "Completo" : `${free} libres`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}
