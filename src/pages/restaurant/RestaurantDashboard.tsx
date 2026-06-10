@@ -97,6 +97,13 @@ export default function RestaurantDashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
   const [drawerInitial, setDrawerInitial] = useState<Reservation | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
 
   async function reload() {
     if (!rid) return;
@@ -156,7 +163,7 @@ export default function RestaurantDashboard() {
       r.channel === "future_voice" || r.status === "cancelled" || r.status === "requires_human",
     )
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
-    .slice(0, 5);
+    .slice(0, 6);
 
   function openCreate() {
     setDrawerMode("create"); setDrawerInitial(null); setDrawerOpen(true);
@@ -189,14 +196,27 @@ export default function RestaurantDashboard() {
   }
 
   // ---- Helpers ----
-  function groupByHour(list: Reservation[]) {
+  function groupByExactTime(list: Reservation[]) {
     const m = new Map<string, Reservation[]>();
     for (const r of list) {
-      const hk = r.reservation_time.slice(0, 2) + ":00";
+      const hk = r.reservation_time.slice(0, 5);
       if (!m.has(hk)) m.set(hk, []);
       m.get(hk)!.push(r);
     }
     return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }
+
+  function canSeat(r: Reservation) {
+    if (r.status === "requires_human" || r.status === "cancelled" || r.status === "no_show") return false;
+    const isToday = r.reservation_date === todayISO;
+    if (!isToday) return false;
+    const [h, m] = r.reservation_time.split(":").map(Number);
+    const resMins = h * 60 + m;
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    // within service: lunch 12:00–17:00 / dinner 17:00–02:00
+    const inLunch = nowMins >= 12 * 60 && nowMins < 17 * 60 && inService(r.reservation_time, "lunch");
+    const inDinner = (nowMins >= 17 * 60 || nowMins < 6 * 60) && inService(r.reservation_time, "dinner");
+    return resMins - nowMins <= 30 || inLunch || inDinner;
   }
 
   async function confirmAndCancel(r: Reservation) {
@@ -207,37 +227,52 @@ export default function RestaurantDashboard() {
   function ReservationRow({ r }: { r: Reservation }) {
     const seated = seatedLocal.has(r.id);
     const review = r.status === "requires_human";
-    const note = review && !r.customer_phone ? "Falta teléfono" : r.customer_notes;
+    const reviewReason = review
+      ? (r.internal_notes || (!r.customer_phone ? "Falta teléfono" : "Revisar antes de confirmar"))
+      : null;
+    const isExpanded = expanded.has(r.id);
+    const hasSecondary = !!(r.customer_phone || r.customer_notes || (r.internal_notes && !review));
+    function toggle() {
+      setExpanded((s) => {
+        const n = new Set(s);
+        n.has(r.id) ? n.delete(r.id) : n.add(r.id);
+        return n;
+      });
+    }
     return (
       <div
         className={cn(
-          "rounded-xl border border-border bg-background/30 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2",
+          "rounded-xl border border-border bg-background/30 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5",
           review && "border-terracotta/30 bg-terracotta/5",
           seated && "border-info/30 bg-info/5",
         )}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs tabular-nums text-muted-foreground">{r.reservation_time.slice(0, 5)}</span>
+            <span className="text-xs tabular-nums font-medium text-foreground">{r.reservation_time.slice(0, 5)}</span>
             <span className="font-medium text-foreground truncate">{r.customer_name}</span>
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <Users className="h-3.5 w-3.5" /> {r.party_size} pax
+              <Users className="h-3.5 w-3.5" /> {r.party_size} {r.party_size === 1 ? "persona" : "personas"}
             </span>
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               {r.channel === "future_voice" ? <Mic className="h-3.5 w-3.5" /> : <Hand className="h-3.5 w-3.5" />}
               {r.channel === "future_voice" ? "Voz" : "Manual"}
             </span>
-            {r.customer_phone && (
-              <span className="hidden sm:inline-flex items-center gap-1 text-xs text-muted-foreground">
-                <Phone className="h-3.5 w-3.5" /> {r.customer_phone}
-              </span>
-            )}
           </div>
-          {note && (
-            <p className={cn("mt-1 text-xs", review ? "text-terracotta" : "text-muted-foreground")}>
-              {review && <AlertCircle className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
-              {note}
+          {review && reviewReason && (
+            <p className="mt-1 text-xs text-terracotta">
+              <AlertCircle className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />
+              {reviewReason}
             </p>
+          )}
+          {isExpanded && (
+            <div className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+              {r.customer_phone && (
+                <p className="inline-flex items-center gap-1"><Phone className="h-3.5 w-3.5" /> {r.customer_phone}</p>
+              )}
+              {r.customer_notes && <p>Nota cliente: {r.customer_notes}</p>}
+              {r.internal_notes && !review && <p>Nota interna: {r.internal_notes}</p>}
+            </div>
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -246,7 +281,7 @@ export default function RestaurantDashboard() {
             <Button size="sm" variant="outline" className="rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
               Revisar
             </Button>
-          ) : !seated ? (
+          ) : !seated && canSeat(r) ? (
             <Button size="sm" variant="outline" className="rounded-full" onClick={() => markSeated(r)}>
               <Check className="h-3.5 w-3.5 mr-1.5" /> Marcar sentado
             </Button>
@@ -261,6 +296,11 @@ export default function RestaurantDashboard() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {hasSecondary && (
+                <DropdownMenuItem onClick={toggle}>
+                  {isExpanded ? "Ocultar detalles" : "Ver detalles"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => openEdit(r)}>Editar reserva</DropdownMenuItem>
               <DropdownMenuItem onClick={() => confirmAndCancel(r)} className="text-destructive">
                 Cancelar reserva
@@ -283,15 +323,16 @@ export default function RestaurantDashboard() {
     svc: ScheduleRow | null;
     items: Reservation[];
   }) {
-    const groups = groupByHour(items);
+    const groups = groupByExactTime(items);
     const range = svc?.opening_time && svc?.closing_time
       ? `${svc.opening_time.slice(0, 5)}–${svc.closing_time.slice(0, 5)}`
       : kind === "lunch" ? "13:00–16:00" : "20:00–23:30";
+    const guests = items.reduce((a, r) => a + r.party_size, 0);
     return (
       <div>
         <div className="px-5 py-3 flex items-baseline justify-between bg-secondary/30 border-y border-border">
           <h3 className="font-serif text-base">{label}</h3>
-          <span className="text-[11px] text-muted-foreground tabular-nums">{range} · {items.length} reservas</span>
+          <span className="text-[11px] text-muted-foreground tabular-nums">{range} · {items.length} reservas · {guests} personas</span>
         </div>
         {groups.length === 0 ? (
           <div className="px-5 py-8 text-center">
@@ -301,13 +342,8 @@ export default function RestaurantDashboard() {
         ) : (
           <div className="divide-y divide-border">
             {groups.map(([hk, list]) => (
-              <div key={hk} className="grid grid-cols-[64px_1fr] gap-4 px-5 py-4">
-                <div className="pt-1.5">
-                  <div className="font-serif text-2xl tabular-nums text-foreground/90">{hk}</div>
-                </div>
-                <div className="space-y-2">
-                  {list.map((r) => <ReservationRow key={r.id} r={r} />)}
-                </div>
+              <div key={hk} className="px-5 py-3 space-y-2">
+                {list.map((r) => <ReservationRow key={r.id} r={r} />)}
               </div>
             ))}
           </div>
@@ -322,10 +358,11 @@ export default function RestaurantDashboard() {
     const cap = svc?.max_guests_per_slot ?? 20;
     const anyBooked = slots.some((t) => (occupancy.get(t) ?? 0) > 0);
     const allFull = slots.every((t) => cap - (occupancy.get(t) ?? 0) <= 0);
-    let headline = `${label} tranquilo`;
+    let headline = `Ocupación del ${label.toLowerCase()}`;
     let sub = "Todas las franjas disponibles.";
     if (allFull) { headline = `${label} completo`; sub = "Sin franjas libres."; }
-    else if (anyBooked) { headline = `Ocupación del ${label.toLowerCase()}`; sub = "Disponibilidad por franja."; }
+    else if (anyBooked) { sub = "Disponibilidad por franja."; }
+    else { headline = `${label} tranquilo`; }
     return (
       <div className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
@@ -333,7 +370,7 @@ export default function RestaurantDashboard() {
             <p className="font-serif text-base text-foreground">{headline}</p>
             <p className="text-xs text-muted-foreground">{sub}</p>
           </div>
-          <span className="text-[11px] text-muted-foreground">Capacidad {cap} pax / franja</span>
+          <span className="text-[11px] text-muted-foreground">Capacidad: {cap} personas por franja</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {slots.map((t) => {
@@ -361,9 +398,33 @@ export default function RestaurantDashboard() {
     );
   }
 
+  function DayStatusBlock() {
+    const lunchGuests = lunchItems.reduce((a, r) => a + r.party_size, 0);
+    const dinnerGuests = dinnerItems.reduce((a, r) => a + r.party_size, 0);
+    return (
+      <div className="rounded-2xl border border-border bg-card px-5 py-4">
+        <p className="font-serif text-base text-foreground mb-2">Estado del día</p>
+        <div className="space-y-1 text-sm">
+          <p className="flex items-baseline gap-2">
+            <span className="text-muted-foreground w-20">Mediodía</span>
+            <span className="tabular-nums">{lunchItems.length} reservas</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="tabular-nums">{lunchGuests} personas</span>
+          </p>
+          <p className="flex items-baseline gap-2">
+            <span className="text-muted-foreground w-20">Noche</span>
+            <span className="tabular-nums">{dinnerItems.length} reservas</span>
+            <span className="text-muted-foreground">·</span>
+            <span className="tabular-nums">{dinnerGuests} personas</span>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const summary = [
     { v: visibleRes.length, l: visibleRes.length === 1 ? "reserva" : "reservas" },
-    { v: totalGuests, l: totalGuests === 1 ? "comensal" : "comensales" },
+    { v: totalGuests, l: totalGuests === 1 ? "persona" : "personas" },
     { v: pendingCount, l: pendingCount === 1 ? "pendiente" : "pendientes" },
   ];
 
@@ -428,7 +489,7 @@ export default function RestaurantDashboard() {
               <div className="flex items-baseline gap-2 ml-auto">
                 {reviewCount === 0 ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Todo revisado
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Hoy revisado
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-terracotta">
@@ -441,10 +502,11 @@ export default function RestaurantDashboard() {
           </div>
 
           {/* Occupancy */}
-          {(filter === "all" || filter === "lunch") && lunchSvc && (
+          {filter === "all" && (lunchSvc || dinnerSvc) && <DayStatusBlock />}
+          {filter === "lunch" && lunchSvc && (
             <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
           )}
-          {(filter === "all" || filter === "dinner") && dinnerSvc && (
+          {filter === "dinner" && dinnerSvc && (
             <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
           )}
 
@@ -452,7 +514,7 @@ export default function RestaurantDashboard() {
           <section className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between">
               <h2 className="font-serif text-lg">Agenda</h2>
-              <span className="text-xs text-muted-foreground">{visibleRes.length} en total</span>
+              <span className="text-xs text-muted-foreground">{visibleRes.length} {visibleRes.length === 1 ? "reserva" : "reservas"} en total</span>
             </div>
             {filter === "all" ? (
               <>
@@ -478,7 +540,7 @@ export default function RestaurantDashboard() {
                 <AlertCircle className="h-4 w-4 text-terracotta" />
               )}
               <h3 className="font-medium text-sm">
-                {reviewItems.length === 0 ? "Todo revisado" : "Necesita revisión"}
+                {reviewItems.length === 0 ? "Hoy revisado" : "Necesita revisión"}
               </h3>
               {reviewItems.length > 0 && (
                 <span className="ml-auto text-xs text-muted-foreground">{reviewItems.length}</span>
@@ -487,23 +549,23 @@ export default function RestaurantDashboard() {
             <div className="p-3 space-y-2">
               {reviewItems.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">
-                  No hay reservas pendientes de comprobar.
+                  No hay reservas de hoy pendientes de comprobar.
                 </p>
               ) : (
                 <>
                   <p className="px-2 pt-1 pb-1 text-xs text-muted-foreground">
                     {reviewItems.length === 1
-                      ? "1 reserva creada por voz necesita confirmación."
-                      : `${reviewItems.length} reservas creadas por voz necesitan confirmación.`}
+                      ? "1 reserva de hoy necesita confirmación."
+                      : `${reviewItems.length} reservas de hoy necesitan confirmación.`}
                   </p>
                   {reviewItems.map((r) => (
                     <div key={r.id} className="rounded-xl border border-terracotta/30 bg-terracotta/5 px-3 py-2.5">
                       <p className="text-sm font-medium">
                         {r.customer_name}
-                        <span className="text-muted-foreground font-normal"> · {r.party_size} pax · {r.reservation_time.slice(0, 5)}</span>
+                        <span className="text-muted-foreground font-normal"> · {r.party_size} {r.party_size === 1 ? "persona" : "personas"} · {r.reservation_time.slice(0, 5)}</span>
                       </p>
                       <p className="text-xs text-terracotta mt-0.5">
-                        {!r.customer_phone ? "Falta teléfono" : (r.customer_notes ?? "Datos por confirmar")}
+                        {r.internal_notes || (!r.customer_phone ? "Falta teléfono" : "Datos por confirmar")}
                       </p>
                       <Button size="sm" variant="outline" className="mt-2 h-7 rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
                         Revisar
@@ -552,7 +614,7 @@ export default function RestaurantDashboard() {
           <div className="rounded-2xl border border-border bg-card">
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <Activity className="h-4 w-4 text-primary" />
-              <h3 className="font-medium text-sm">Actividad del agente</h3>
+              <h3 className="font-medium text-sm">Actividad reciente</h3>
             </div>
             <div className="p-3 space-y-2">
               {activityItems.length === 0 ? (
@@ -566,12 +628,16 @@ export default function RestaurantDashboard() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium truncate">{r.customer_name}</p>
-                      <StatusChip value={r.status} />
+                      {r.channel === "future_voice" && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Mic className="h-3 w-3" /> Voz
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="tabular-nums">{r.reservation_date.slice(5)} · {r.reservation_time.slice(0, 5)}</span>
-                      <span className="inline-flex items-center gap-1">
-                        <Mic className="h-3 w-3" /> Voz
+                    <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                      <StatusChip value={r.status} />
+                      <span className="tabular-nums">
+                        Para {r.reservation_date.slice(8, 10)}/{r.reservation_date.slice(5, 7)} · {r.reservation_time.slice(0, 5)}
                       </span>
                     </div>
                   </button>
