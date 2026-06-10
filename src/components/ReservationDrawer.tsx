@@ -477,7 +477,7 @@ export function ReservationDrawer({
                 </p>
               </section>
 
-              <section className="space-y-2 pt-2 border-t border-border/60">
+              <section className="space-y-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Acciones de reserva
                 </h3>
@@ -500,6 +500,9 @@ export function ReservationDrawer({
                     </button>
                   )}
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  La reserva dejará de contar para la ocupación.
+                </p>
               </section>
             </>
           )}
