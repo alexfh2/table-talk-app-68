@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { listSchedule } from "@/lib/queries";
-import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow } from "@/lib/types";
+import { listSchedule, getAgentSettings } from "@/lib/queries";
+import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
+import { evaluateReservationRules, appendReviewReasonsToNotes } from "@/lib/reservationRules";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -54,7 +55,8 @@ export function ReservationDrawer({
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
-  const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id">[]>([]);
+  const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id" | "customer_name">[]>([]);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
@@ -66,6 +68,7 @@ export function ReservationDrawer({
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId).order("sort_order")
       .then(({ data }) => setTables((data as RestaurantTable[]) ?? []));
     listSchedule(restaurantId).then(setSchedules).catch(() => setSchedules([]));
+    getAgentSettings(restaurantId).then(setAgentSettings).catch(() => setAgentSettings(null));
   }, [open, restaurantId]);
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export function ReservationDrawer({
     if (!open || !restaurantId || !v.reservation_date) return;
     supabase
       .from("reservations")
-      .select("id, reservation_time, party_size, status")
+      .select("id, reservation_time, party_size, status, customer_name")
       .eq("restaurant_id", restaurantId)
       .eq("reservation_date", v.reservation_date)
       .then(({ data }) => setDayReservations((data as any) ?? []));
