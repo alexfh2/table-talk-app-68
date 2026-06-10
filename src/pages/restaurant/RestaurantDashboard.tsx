@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { listReservations, listSchedule } from "@/lib/queries";
-import type { Reservation, ScheduleRow } from "@/lib/types";
+import type { Reservation, ScheduleRow, Zone, RestaurantTable } from "@/lib/types";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { cn } from "@/lib/utils";
 import {
@@ -93,6 +93,8 @@ export default function RestaurantDashboard() {
   const rid = profile?.restaurant_id;
   const [res, setRes] = useState<Reservation[]>([]);
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
   const [seatedLocal, setSeatedLocal] = useState<Set<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
@@ -107,9 +109,16 @@ export default function RestaurantDashboard() {
 
   async function reload() {
     if (!rid) return;
-    const [r, s] = await Promise.all([listReservations(rid), listSchedule(rid)]);
+    const [r, s, tRes, zRes] = await Promise.all([
+      listReservations(rid),
+      listSchedule(rid),
+      supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid).order("sort_order"),
+      supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid).order("sort_order"),
+    ]);
     setRes(r);
     setSchedule(s);
+    setTables((tRes.data as RestaurantTable[]) ?? []);
+    setZones((zRes.data as Zone[]) ?? []);
   }
 
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [rid]);
