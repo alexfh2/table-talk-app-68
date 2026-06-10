@@ -505,15 +505,15 @@ export function ReservationDrawer({
             </div>
           </section>
 
-          {(isCreate || isEdit) && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
+          {(isCreate || isEdit || isReview) && evaluation && (evaluation.blockingReason || (!isReview && evaluation.reviewReasons.length > 0) || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
             <div className="space-y-2">
-              {evaluation.blockingReason && (nameTouched || isEdit || evaluation.blockingReason !== "Introduce el nombre del cliente.") && (
+              {evaluation.blockingReason && (nameTouched || isEdit || isReview || evaluation.blockingReason !== "Introduce el nombre del cliente.") && (
                 <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>{evaluation.blockingReason}</span>
                 </div>
               )}
-              {!evaluation.blockingReason && evaluation.reviewReasons.length > 0 && (
+              {!evaluation.blockingReason && !isReview && evaluation.reviewReasons.length > 0 && (
                 <div className="rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2.5 text-sm text-terracotta space-y-1">
                   <p className="flex items-start gap-2 font-medium">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
