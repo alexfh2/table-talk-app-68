@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import mediterraneanBg from "@/assets/mediterranean-bg.png.asset.json";
 
 interface NavItem {
   to: string;
@@ -135,7 +136,18 @@ export function AppShell({
               </Button>
             </div>
           </header>
-          <main className="flex-1 p-4 sm:p-6 overflow-x-auto">{children}</main>
+          <main className="relative flex-1 overflow-x-auto">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.08]"
+              style={{ backgroundImage: `url(${mediterraneanBg.url})` }}
+            />
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/70 via-background/60 to-background/80"
+            />
+            <div className="relative p-4 sm:p-6">{children}</div>
+          </main>
         </div>
       </div>
     </SidebarProvider>
