@@ -279,12 +279,23 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
             </Button>
           </div>
           {!selectedSeason ? (
-            <p className="text-xs text-muted-foreground">
-              Estás editando el horario base. Se usa cuando no hay una temporada o excepción activa.
-            </p>
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Horario base</p>
+              <p className="text-xs text-muted-foreground">
+                Se usa cuando no hay una temporada o excepción activa.
+              </p>
+            </div>
           ) : (
-            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <span>Esta temporada se aplicará entre las fechas seleccionadas.</span>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">{selectedSeason.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  Del {new Date(selectedSeason.start_date + "T00:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long" })} al {new Date(selectedSeason.end_date + "T00:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" })}.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Las excepciones puntuales tienen prioridad sobre esta temporada.
+                </p>
+              </div>
               <div className="flex gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setSeasonDrawer({ open: true, editing: selectedSeason })}>
                   <Pencil className="h-3.5 w-3.5 mr-1" /> Editar fechas
