@@ -373,21 +373,38 @@ export function ReservationDrawer({
         )}
 
         {isReview && (
-          <div className="mb-5 rounded-2xl border border-border bg-secondary/40 p-4 space-y-1.5 text-sm">
-            <p><span className="text-muted-foreground">Nombre · </span><span className="font-medium">{v.customer_name || "—"}</span></p>
-            <p><span className="text-muted-foreground">Personas · </span>{v.party_size}</p>
-            <p><span className="text-muted-foreground">Fecha · </span>{v.reservation_date}</p>
-            <p><span className="text-muted-foreground">Hora · </span>{(v.reservation_time ?? "").slice(0, 5)}</p>
-            <p><span className="text-muted-foreground">Teléfono · </span>{v.customer_phone || <span className="text-terracotta">no facilitado</span>}</p>
-            {v.customer_notes && <p><span className="text-muted-foreground">Nota · </span>{v.customer_notes}</p>}
-          </div>
-        )}
+          <>
+            {/* Banner de revisión */}
+            <div className="mb-4 rounded-2xl border border-terracotta/30 bg-terracotta/10 p-4 space-y-2">
+              <p className="font-medium text-terracotta flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                Esta reserva necesita revisión.
+              </p>
+              {allReviewReasons.length > 0 ? (
+                <ul className="ml-6 list-disc text-xs text-terracotta space-y-0.5">
+                  {allReviewReasons.map((r) => <li key={r}>{r}</li>)}
+                </ul>
+              ) : (
+                <p className="ml-6 text-xs text-terracotta/80">Revisa los datos y confirma cuando todo sea correcto.</p>
+              )}
+            </div>
 
-        {isReview && missingPhone && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
-            <AlertCircle className="h-4 w-4 mt-0.5" />
-            <span>Falta teléfono del cliente.</span>
-          </div>
+            {/* Datos detectados */}
+            <div className="mb-5 rounded-2xl border border-border bg-secondary/40 p-4 space-y-1.5 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                {reviewChannel === "future_voice" ? "El agente entendió" : "Datos actuales"}
+              </p>
+              <p><span className="text-muted-foreground">Nombre · </span><span className="font-medium">{v.customer_name || "—"}</span></p>
+              <p><span className="text-muted-foreground">Personas · </span>{v.party_size}</p>
+              <p><span className="text-muted-foreground">Fecha · </span>{v.reservation_date}</p>
+              <p><span className="text-muted-foreground">Hora · </span>{(v.reservation_time ?? "").slice(0, 5)}</p>
+              <p>
+                <span className="text-muted-foreground">Teléfono · </span>
+                {v.customer_phone || <span className="text-terracotta">{reviewChannel === "future_voice" ? "no detectado" : "no facilitado"}</span>}
+              </p>
+              {v.customer_notes && <p><span className="text-muted-foreground">Nota · </span>{v.customer_notes}</p>}
+            </div>
+          </>
         )}
 
         <div className="space-y-5">
