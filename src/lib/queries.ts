@@ -9,6 +9,8 @@ import type {
   HandoffRequest,
   ExternalCalendarSettings,
   Profile,
+  ScheduleSeason,
+  ScheduleException,
 } from "./types";
 
 export async function listRestaurants(): Promise<Restaurant[]> {
@@ -39,6 +41,26 @@ export async function listSchedule(restaurantId: string): Promise<ScheduleRow[]>
     .order("day_of_week");
   if (error) throw error;
   return data as ScheduleRow[];
+}
+
+export async function listSeasons(restaurantId: string): Promise<ScheduleSeason[]> {
+  const { data, error } = await supabase
+    .from("schedule_seasons")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("start_date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as ScheduleSeason[];
+}
+
+export async function listExceptions(restaurantId: string): Promise<ScheduleException[]> {
+  const { data, error } = await supabase
+    .from("blocked_dates")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("date", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as ScheduleException[];
 }
 
 export async function listFaqs(restaurantId: string): Promise<Faq[]> {

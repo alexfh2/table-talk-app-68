@@ -15,7 +15,8 @@ import {
   Activity,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { listReservations, listSchedule } from "@/lib/queries";
+import { listReservations } from "@/lib/queries";
+import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import type { Reservation, ScheduleRow, Zone, RestaurantTable } from "@/lib/types";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { cn } from "@/lib/utils";
@@ -93,6 +94,7 @@ export default function RestaurantDashboard() {
   const rid = profile?.restaurant_id;
   const [res, setRes] = useState<Reservation[]>([]);
   const [schedule, setSchedule] = useState<ScheduleRow[]>([]);
+  const [scheduleCtx, setScheduleCtx] = useState<ScheduleContext>({ schedule: [], seasons: [], exceptions: [] });
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
   const [seatedLocal, setSeatedLocal] = useState<Set<string>>(new Set());
@@ -109,14 +111,15 @@ export default function RestaurantDashboard() {
 
   async function reload() {
     if (!rid) return;
-    const [r, s, tRes, zRes] = await Promise.all([
+    const [r, ctx, tRes, zRes] = await Promise.all([
       listReservations(rid),
-      listSchedule(rid),
+      loadScheduleContext(rid),
       supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid).order("sort_order"),
       supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid).order("sort_order"),
     ]);
     setRes(r);
-    setSchedule(s);
+    setScheduleCtx(ctx);
+    setSchedule(ctx.schedule);
     setTables((tRes.data as RestaurantTable[]) ?? []);
     setZones((zRes.data as Zone[]) ?? []);
   }
@@ -135,8 +138,8 @@ export default function RestaurantDashboard() {
   );
 
   const todaySchedule = useMemo(
-    () => schedule.filter((s) => s.day_of_week === dow && s.is_open && s.opening_time && s.closing_time),
-    [schedule, dow],
+    () => effectiveDay(scheduleCtx, todayISO).services,
+    [scheduleCtx, todayISO],
   );
   const lunchSvc = todaySchedule.find((s) => s.service_period === "lunch") ?? null;
   const dinnerSvc = todaySchedule.find((s) => s.service_period === "dinner") ?? null;

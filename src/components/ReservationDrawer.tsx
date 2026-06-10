@@ -6,7 +6,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { listSchedule, getAgentSettings } from "@/lib/queries";
+import { getAgentSettings } from "@/lib/queries";
+import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
 import { evaluateReservationRules, appendReviewReasonsToNotes, parseReviewReasonsFromNotes } from "@/lib/reservationRules";
 import { toast } from "sonner";
@@ -54,7 +55,7 @@ export function ReservationDrawer({
   const [saving, setSaving] = useState(false);
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [scheduleCtx, setScheduleCtx] = useState<ScheduleContext>({ schedule: [], seasons: [], exceptions: [] });
   const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id" | "customer_name">[]>([]);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
@@ -69,7 +70,9 @@ export function ReservationDrawer({
       .then(({ data }) => setZones((data as Zone[]) ?? []));
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId).order("sort_order")
       .then(({ data }) => setTables((data as RestaurantTable[]) ?? []));
-    listSchedule(restaurantId).then(setSchedules).catch(() => setSchedules([]));
+    loadScheduleContext(restaurantId)
+      .then(setScheduleCtx)
+      .catch(() => setScheduleCtx({ schedule: [], seasons: [], exceptions: [] }));
     getAgentSettings(restaurantId).then(setAgentSettings).catch(() => setAgentSettings(null));
   }, [open, restaurantId]);
 
@@ -107,10 +110,7 @@ export function ReservationDrawer({
 
   const availability = useMemo(() => {
     if (!v.reservation_date || !time) return null;
-    const dow = new Date(v.reservation_date + "T00:00:00").getDay();
-    const candidates = schedules.filter(
-      (s) => s.day_of_week === dow && s.is_open && s.opening_time && s.closing_time,
-    );
+    const candidates = effectiveDay(scheduleCtx, v.reservation_date).services;
     const row = candidates.find((s) => {
       const open = s.opening_time!.slice(0, 5);
       const close = s.closing_time!.slice(0, 5);
@@ -135,7 +135,7 @@ export function ReservationDrawer({
       .reduce((acc, r) => acc + Math.max(0, r.party_size ?? 0), 0);
     const free = Math.min(capacity, Math.max(0, capacity - occupied));
     return { free, capacity, service, outOfService: false as const };
-  }, [schedules, dayReservations, v.reservation_date, time, initial?.id, service]);
+  }, [scheduleCtx, dayReservations, v.reservation_date, time, initial?.id, service]);
 
   const partySize = Number(v.party_size ?? 0);
   const overCapacity =

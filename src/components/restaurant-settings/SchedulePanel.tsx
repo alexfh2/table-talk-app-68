@@ -1,16 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { listSchedule } from "@/lib/queries";
-import type { ScheduleRow } from "@/lib/types";
+import { listSchedule, listSeasons, listExceptions } from "@/lib/queries";
+import type { ScheduleRow, ScheduleSeason, ScheduleException } from "@/lib/types";
 import { DAY_NAMES } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, X, Sun, Moon } from "lucide-react";
+import { Plus, Trash2, X, Sun, Moon, Pencil } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
+import { SeasonDrawer } from "./SeasonDrawer";
+import { ExceptionDrawer } from "./ExceptionDrawer";
+import { ExceptionsList } from "./ExceptionsList";
 
 type Period = "lunch" | "dinner";
 const PERIOD_LABEL: Record<Period, string> = { lunch: "Mediodía", dinner: "Noche" };
@@ -22,10 +26,33 @@ const PERIOD_DEFAULTS: Record<Period, { opening: string; closing: string }> = {
 export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [saving, setSaving] = useState(false);
+  const [seasons, setSeasons] = useState<ScheduleSeason[]>([]);
+  const [exceptions, setExceptions] = useState<ScheduleException[]>([]);
+  // null = base schedule, string = season id
+  const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const [seasonDrawer, setSeasonDrawer] = useState<{ open: boolean; editing: ScheduleSeason | null }>({ open: false, editing: null });
+  const [exDrawer, setExDrawer] = useState<{ open: boolean; editing: ScheduleException | null }>({ open: false, editing: null });
 
+  async function reload() {
+    const [s, se, ex] = await Promise.all([
+      listSchedule(restaurantId),
+      listSeasons(restaurantId),
+      listExceptions(restaurantId),
+    ]);
+    setRows(s);
+    setSeasons(se);
+    setExceptions(ex);
+  }
   useEffect(() => {
-    listSchedule(restaurantId).then(setRows);
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId]);
+
+  const visibleRows = useMemo(
+    () => rows.filter((r) => (r.season_id ?? null) === selectedSeasonId),
+    [rows, selectedSeasonId],
+  );
+  const selectedSeason = seasons.find((s) => s.id === selectedSeasonId) ?? null;
 
   function update(id: string, patch: Partial<ScheduleRow>) {
     setRows((p) => p.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -48,6 +75,7 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
         booking_mode: "shifts",
         shift_times: period === "lunch" ? ["13:30", "15:00"] : ["20:30", "22:30"],
         service_period: period,
+        season_id: selectedSeasonId,
       })
       .select()
       .single();
@@ -63,7 +91,22 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
 
   async function saveAll() {
     setSaving(true);
-    for (const r of rows) {
+    // Warn about future reservations potentially affected by this schedule
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      let q = supabase
+        .from("reservations")
+        .select("id", { count: "exact", head: true })
+        .eq("restaurant_id", restaurantId)
+        .gte("reservation_date", today);
+      const { count } = await q;
+      if ((count ?? 0) > 0) {
+        toast.warning("Hay reservas futuras en este periodo. Revisa si necesitan cambios.");
+      }
+    } catch {
+      // ignore
+    }
+    for (const r of visibleRows) {
       await supabase
         .from("restaurant_schedule")
         .update({
@@ -163,7 +206,7 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
   }
 
   function renderPeriodSection(day: number, period: Period) {
-    const row = rows.find((r) => r.day_of_week === day && (r.service_period ?? "lunch") === period);
+    const row = visibleRows.find((r) => r.day_of_week === day && (r.service_period ?? "lunch") === period);
     const Icon = period === "lunch" ? Sun : Moon;
     return (
       <div className="border rounded-lg p-3 space-y-3">
@@ -187,8 +230,74 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
 
   const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Lunes a Domingo
 
+  async function deleteSeason(s: ScheduleSeason) {
+    if (!confirm(`¿Eliminar la temporada “${s.name}”? Se borrarán sus horarios.`)) return;
+    const { error } = await supabase.from("schedule_seasons").delete().eq("id", s.id);
+    if (error) return toast.error(error.message);
+    toast.success("Temporada eliminada");
+    if (selectedSeasonId === s.id) setSelectedSeasonId(null);
+    reload();
+  }
+
+  async function deleteException(e: ScheduleException) {
+    if (!confirm("¿Eliminar esta excepción?")) return;
+    const { error } = await supabase.from("blocked_dates").delete().eq("id", e.id);
+    if (error) return toast.error(error.message);
+    toast.success("Excepción eliminada");
+    reload();
+  }
+
+  const selectorValue = selectedSeasonId ?? "base";
+
   return (
     <div className="space-y-4">
+      <Card>
+        <CardContent className="pt-4 space-y-3">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1.5 min-w-[220px] flex-1">
+              <Label className="text-xs">Horario que estás editando</Label>
+              <Select
+                value={selectorValue}
+                onValueChange={(v) => setSelectedSeasonId(v === "base" ? null : v)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="base">Horario base</SelectItem>
+                  {seasons.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      Temporada: {s.name} ({s.start_date} → {s.end_date})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setSeasonDrawer({ open: true, editing: null })}>
+              <Plus className="h-4 w-4 mr-1" /> Añadir temporada
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setExDrawer({ open: true, editing: null })}>
+              <Plus className="h-4 w-4 mr-1" /> Añadir excepción
+            </Button>
+          </div>
+          {!selectedSeason ? (
+            <p className="text-xs text-muted-foreground">
+              Estás editando el horario base. Se usa cuando no hay una temporada o excepción activa.
+            </p>
+          ) : (
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>Esta temporada se aplicará entre las fechas seleccionadas.</span>
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" onClick={() => setSeasonDrawer({ open: true, editing: selectedSeason })}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" /> Editar fechas
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => deleteSeason(selectedSeason)}>
+                  <Trash2 className="h-3.5 w-3.5 mr-1 text-destructive" /> Eliminar temporada
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {DAY_ORDER.map((dayIdx) => (
         <Card key={dayIdx}>
           <CardHeader className="pb-3">
@@ -203,6 +312,33 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
       <div className="flex justify-end">
         <Button onClick={saveAll} disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</Button>
       </div>
+
+      <ExceptionsList
+        exceptions={exceptions}
+        onAdd={() => setExDrawer({ open: true, editing: null })}
+        onEdit={(e) => setExDrawer({ open: true, editing: e })}
+        onDelete={deleteException}
+      />
+
+      <SeasonDrawer
+        open={seasonDrawer.open}
+        onOpenChange={(v) => setSeasonDrawer((s) => ({ ...s, open: v }))}
+        restaurantId={restaurantId}
+        seasons={seasons}
+        scheduleRows={rows}
+        editing={seasonDrawer.editing}
+        onSaved={(id) => {
+          setSelectedSeasonId(id);
+          reload();
+        }}
+      />
+      <ExceptionDrawer
+        open={exDrawer.open}
+        onOpenChange={(v) => setExDrawer((s) => ({ ...s, open: v }))}
+        restaurantId={restaurantId}
+        editing={exDrawer.editing}
+        onSaved={reload}
+      />
     </div>
   );
 }
