@@ -16,7 +16,7 @@ import {
   type RestaurantTable,
   type Zone,
 } from "@/lib/types";
-import { Plus, MoreHorizontal, Ban, UserX, Search, CalendarDays, Eye } from "lucide-react";
+import { Plus, MoreHorizontal, Ban, UserX, Search, CalendarDays, Eye, ArrowUpDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
