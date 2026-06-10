@@ -21,6 +21,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
+function replaceNameWithVar(text: string | null | undefined, name: string | null | undefined): string {
+  if (!text) return "";
+  if (!name) return text;
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(escaped, "g"), "{nombre_restaurante}");
+}
+
 export default function RestaurantSettings() {
   const { profile } = useAuth();
   const rid = profile?.restaurant_id ?? "";
