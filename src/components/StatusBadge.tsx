@@ -18,12 +18,14 @@ type Kind =
 
 const styles: Record<string, string> = {
   // reservation
-  pending: "bg-warning/15 text-warning border-warning/30",
+  pending: "bg-warning/20 text-foreground border-warning/40",
   confirmed: "bg-success/15 text-success border-success/30",
   modified: "bg-info/15 text-info border-info/30",
   cancelled: "bg-muted text-muted-foreground border-border",
-  requires_human: "bg-destructive/15 text-destructive border-destructive/30",
-  no_show: "bg-muted text-muted-foreground border-border",
+  requires_human: "bg-terracotta/15 text-terracotta border-terracotta/30",
+  seated: "bg-info/15 text-info border-info/30",
+  completed: "bg-success/10 text-success border-success/25",
+  no_show: "bg-destructive/10 text-destructive border-destructive/25",
   // restaurant
   draft: "bg-muted text-muted-foreground border-border",
   active: "bg-success/15 text-success border-success/30",
