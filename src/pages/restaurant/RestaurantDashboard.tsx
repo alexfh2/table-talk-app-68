@@ -575,22 +575,19 @@ export default function RestaurantDashboard() {
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
-              </div>
-              <div className="flex flex-wrap items-baseline gap-3">
-                <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
-                  {formatHeaderDate(selectedDate, todayISO)}
-                </h1>
                 {!isViewingToday && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 rounded-full px-3 text-xs"
+                  <button
+                    type="button"
                     onClick={() => setSelectedDate(new Date())}
+                    className="inline-flex items-center rounded-full border border-border bg-secondary/30 px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Volver a hoy
-                  </Button>
+                  </button>
                 )}
               </div>
+              <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
+                {formatHeaderDate(selectedDate, todayISO)}
+              </h1>
               <div className="flex flex-wrap items-center gap-3">
                 <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
                   {filterOptions.map((o) => (
