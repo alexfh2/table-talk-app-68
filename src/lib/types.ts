@@ -144,7 +144,7 @@ export const RESERVATION_STATUS_LABELS: Record<ReservationStatus, string> = {
   confirmed: "Confirmada",
   modified: "Modificada",
   cancelled: "Cancelada",
-  requires_human: "Requiere humano",
+  requires_human: "Requiere revisión",
   no_show: "No-show",
 };
 
