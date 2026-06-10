@@ -63,7 +63,7 @@ function StatusChip({ value }: { value: string }) {
 
 function formatHeaderDate(d: Date) {
   const s = d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
-  return "Hoy, " + s.charAt(0).toUpperCase() + s.slice(1);
+  return "Hoy, " + s.charAt(0).toUpperCase() + s.slice(1).replace(",", "");
 }
 
 function buildSlotList(svc: ScheduleRow | null) {
