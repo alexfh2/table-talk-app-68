@@ -124,6 +124,7 @@ export default function RestaurantDashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
   const [drawerInitial, setDrawerInitial] = useState<Reservation | null>(null);
+  const [createDefaults, setCreateDefaults] = useState<Partial<Reservation> | undefined>(undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
 
