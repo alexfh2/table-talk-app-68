@@ -197,7 +197,7 @@ export default function RestaurantCalendar() {
       ) : (
         <DayView
           summary={daySummary}
-          allSchedulesForDow={daySummary.services}
+          allSchedulesForDow={daySummary.services.map((s) => s.row)}
           tableLabel={tableLabel}
           onOpenReservation={openReservation}
           onCreateAt={(time) => openCreate({ date: format(date, "yyyy-MM-dd"), time })}
