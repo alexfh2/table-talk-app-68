@@ -368,7 +368,7 @@ export default function RestaurantDashboard() {
     const cap = svc?.max_guests_per_slot ?? 20;
     const anyBooked = slots.some((t) => (occupancy.get(t) ?? 0) > 0);
     const allFull = slots.every((t) => cap - (occupancy.get(t) ?? 0) <= 0);
-    let headline = `Ocupación del ${label.toLowerCase()}`;
+    let headline = label === "Noche" ? "Ocupación de la noche" : `Ocupación del ${label.toLowerCase()}`;
     let sub = "Todas las franjas disponibles.";
     if (allFull) { headline = `${label} completo`; sub = "Sin franjas libres."; }
     else if (anyBooked) { sub = "Disponibilidad por franja."; }
@@ -588,34 +588,45 @@ export default function RestaurantDashboard() {
           </div>
 
           {/* Huecos disponibles */}
-          {(lunchSvc || dinnerSvc) && (
+          {(filter === "all" ? (lunchSvc || dinnerSvc) : true) && (
             <div className="rounded-2xl border border-border bg-card">
               <div className="px-4 py-3 border-b border-border">
                 <h3 className="font-medium text-sm">Huecos disponibles</h3>
               </div>
               <div className="p-3 space-y-3">
-                {[{ svc: lunchSvc, label: "Mediodía" }, { svc: dinnerSvc, label: "Noche" }].map(({ svc: s, label }) => {
-                  if (!s) return null;
-                  const slots = buildSlotList(s);
-                  const cap = s.max_guests_per_slot ?? 20;
-                  return (
-                    <div key={label}>
-                      <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
-                      {slots.slice(0, 6).map((t) => {
-                        const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
-                        const full = free === 0;
-                        return (
-                          <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
-                            <span className="tabular-nums text-foreground">{t}</span>
-                            <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
-                              {full ? "Completo" : `${free} libres`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                {[
+                  { svc: lunchSvc, label: "Mediodía", show: filter === "all" || filter === "lunch" },
+                  { svc: dinnerSvc, label: "Noche", show: filter === "all" || filter === "dinner" },
+                ]
+                  .filter((x) => x.show)
+                  .map(({ svc: s, label }) => {
+                    if (!s) {
+                      return (
+                        <p key={label} className="px-2 text-xs text-muted-foreground">
+                          {label} · Sin servicio
+                        </p>
+                      );
+                    }
+                    const slots = buildSlotList(s);
+                    const cap = s.max_guests_per_slot ?? 20;
+                    return (
+                      <div key={label}>
+                        <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                        {slots.slice(0, 6).map((t) => {
+                          const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
+                          const full = free === 0;
+                          return (
+                            <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
+                              <span className="tabular-nums text-foreground">{t}</span>
+                              <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
+                                {full ? "Completo" : `${free} libres`}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -630,28 +641,35 @@ export default function RestaurantDashboard() {
               {activityItems.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">Sin actividad reciente.</p>
               ) : (
-                activityItems.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => (r.status === "requires_human" ? openReview(r) : openEdit(r))}
-                    className="w-full text-left rounded-xl border border-border bg-background/30 px-3 py-2 hover:bg-secondary/40 transition"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium truncate">{r.customer_name}</p>
-                      {r.channel === "future_voice" && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Mic className="h-3 w-3" /> Voz
+                activityItems.map((r) => {
+                  const isTodayActivity = r.reservation_date === todayISO;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => (r.status === "requires_human" ? openReview(r) : openEdit(r))}
+                      className="w-full text-left rounded-xl border border-border bg-background/30 px-3 py-2 hover:bg-secondary/40 transition"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium truncate">{r.customer_name}</p>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                        <StatusChip value={r.status} />
+                        <span className="tabular-nums">
+                          Para {r.reservation_date.slice(8, 10)}/{r.reservation_date.slice(5, 7)} · {r.reservation_time.slice(0, 5)}
                         </span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                      <StatusChip value={r.status} />
-                      <span className="tabular-nums">
-                        Para {r.reservation_date.slice(8, 10)}/{r.reservation_date.slice(5, 7)} · {r.reservation_time.slice(0, 5)}
-                      </span>
-                    </div>
-                  </button>
-                ))
+                        {!isTodayActivity && (
+                          <span className="inline-flex items-center rounded-full border border-border bg-secondary/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Otro día
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        {r.channel === "future_voice" ? <Mic className="h-3 w-3" /> : <Hand className="h-3 w-3" />}
+                        {r.channel === "future_voice" ? "Voz" : r.channel === "manual" ? "Manual" : r.channel === "whatsapp" ? "WhatsApp" : r.channel === "external_calendar" ? "Calendario externo" : r.channel}
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
