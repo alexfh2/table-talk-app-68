@@ -3,7 +3,6 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import {
   Plus,
-  Sparkles,
   AlertCircle,
   Users,
   Pencil,
@@ -12,6 +11,8 @@ import {
   Mic,
   Hand,
   Check,
+  CheckCircle2,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { listReservations, listSchedule } from "@/lib/queries";
@@ -65,16 +66,6 @@ function formatHeaderDate(d: Date) {
   return "Hoy, " + s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function nextSlots(schedule: ScheduleRow[], dayOfWeek: number) {
-  const todays = schedule.filter((s) => s.day_of_week === dayOfWeek && s.is_open && s.opening_time && s.closing_time);
-  if (todays.length === 0) return null;
-  const now = new Date();
-  const hour = now.getHours();
-  const target = hour < 17 ? "lunch" : "dinner";
-  const svc = todays.find((s) => s.service_period === target) ?? todays[0];
-  return svc;
-}
-
 function buildSlotList(svc: ScheduleRow | null) {
   if (!svc || !svc.opening_time || !svc.closing_time) return [] as string[];
   const [oh, om] = svc.opening_time.split(":").map(Number);
@@ -87,6 +78,14 @@ function buildSlotList(svc: ScheduleRow | null) {
     out.push(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
   }
   return out;
+}
+
+type ServiceFilter = "all" | "lunch" | "dinner";
+
+function inService(time: string, kind: "lunch" | "dinner") {
+  const t = time.slice(0, 5);
+  if (kind === "lunch") return t >= "12:00" && t < "17:00";
+  return t >= "17:00" || t < "06:00";
 }
 
 export default function RestaurantDashboard() {
