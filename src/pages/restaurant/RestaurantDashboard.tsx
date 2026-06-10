@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useSearchParams } from "react-router-dom";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pendiente",
@@ -152,8 +153,28 @@ export default function RestaurantDashboard() {
 
   const actualToday = useMemo(() => new Date(), []);
   const todayISO = isoOf(actualToday);
-  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dateParam = searchParams.get("date");
+  const isValidISO = (s: string | null): s is string =>
+    !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(fromISO(s).getTime());
+  const selectedDate = useMemo(
+    () => (isValidISO(dateParam) ? fromISO(dateParam) : new Date()),
+    [dateParam],
+  );
   const selectedISO = isoOf(selectedDate);
+  const setSelectedDate = (updater: Date | ((d: Date) => Date)) => {
+    const next = typeof updater === "function" ? (updater as (d: Date) => Date)(selectedDate) : updater;
+    const nextISO = isoOf(next);
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        if (nextISO === isoOf(new Date())) p.delete("date");
+        else p.set("date", nextISO);
+        return p;
+      },
+      { replace: true },
+    );
+  };
   const isViewingToday = selectedISO === todayISO;
 
   const todayRes = useMemo(
