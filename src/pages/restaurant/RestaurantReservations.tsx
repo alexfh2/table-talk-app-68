@@ -113,6 +113,7 @@ export default function RestaurantReservations() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [sortBy, setSortBy] = useState<SortBy>("date_asc");
 
   function reload() {
     if (!rid) return;
