@@ -149,20 +149,22 @@ export default function RestaurantDashboard() {
 
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [rid]);
 
-  const today = useMemo(() => new Date(), []);
-  const todayISO = today.toISOString().slice(0, 10);
-  const dow = today.getDay();
+  const actualToday = useMemo(() => new Date(), []);
+  const todayISO = isoOf(actualToday);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const selectedISO = isoOf(selectedDate);
+  const isViewingToday = selectedISO === todayISO;
 
   const todayRes = useMemo(
     () => res
-      .filter((r) => r.reservation_date === todayISO && r.status !== "cancelled")
+      .filter((r) => r.reservation_date === selectedISO && r.status !== "cancelled")
       .sort((a, b) => a.reservation_time.localeCompare(b.reservation_time)),
-    [res, todayISO],
+    [res, selectedISO],
   );
 
   const todaySchedule = useMemo(
-    () => effectiveDay(scheduleCtx, todayISO).services,
-    [scheduleCtx, todayISO],
+    () => effectiveDay(scheduleCtx, selectedISO).services,
+    [scheduleCtx, selectedISO],
   );
   const lunchSvc = todaySchedule.find((s) => s.service_period === "lunch") ?? null;
   const dinnerSvc = todaySchedule.find((s) => s.service_period === "dinner") ?? null;
