@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { UtensilsCrossed } from "lucide-react";
 import { toast } from "sonner";
+import mediterraneanBg from "@/assets/mediterranean-bg.png.asset.json";
 
 export default function Auth() {
   const { signIn, profile, session } = useAuth();
@@ -40,8 +41,17 @@ export default function Auth() {
   }
 
   return (
-    <div className="min-h-screen grid place-items-center bg-gradient-to-br from-background to-accent p-4">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen grid place-items-center bg-gradient-to-br from-background to-accent p-4 overflow-hidden">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.25]"
+        style={{ backgroundImage: `url(${mediterraneanBg.url})` }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/40 to-background/60"
+      />
+      <div className="relative w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-6">
           <div className="rounded-lg bg-primary text-primary-foreground p-2">
             <UtensilsCrossed className="h-5 w-5" />
