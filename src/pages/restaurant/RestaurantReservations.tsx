@@ -16,7 +16,7 @@ import {
   type RestaurantTable,
   type Zone,
 } from "@/lib/types";
-import { Plus, MoreHorizontal, Ban, UserX, Search, CalendarDays, Eye } from "lucide-react";
+import { Plus, MoreHorizontal, Ban, UserX, Search, CalendarDays, Eye, ArrowUpDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +36,7 @@ type DateFilter = "all" | "today" | "tomorrow" | "this_week" | "upcoming" | "cus
 type ChannelFilter = "all" | ReservationChannel;
 type StatusFilter = "all" | ReservationStatus;
 type QuickChip = "all" | "upcoming" | "today" | "requires_human" | "pending" | "cancelled";
+type SortBy = "date_asc" | "date_desc" | "name_asc" | "updated_desc";
 
 const CHANNEL_SHORT: Record<ReservationChannel, string> = {
   manual: "Manual",
@@ -112,6 +113,7 @@ export default function RestaurantReservations() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
+  const [sortBy, setSortBy] = useState<SortBy>("date_asc");
 
   function reload() {
     if (!rid) return;
@@ -149,7 +151,7 @@ export default function RestaurantReservations() {
   const filtered = useMemo(() => {
     const today = todayISO();
     const q = query.trim().toLowerCase();
-    return items.filter((r) => {
+    const result = items.filter((r) => {
       if (chip === "upcoming" && r.reservation_date < today) return false;
       if (chip === "today" && r.reservation_date !== today) return false;
       if (chip === "requires_human" && r.status !== "requires_human") return false;
@@ -165,7 +167,27 @@ export default function RestaurantReservations() {
       }
       return true;
     });
-  }, [items, chip, status, channel, dateRange, query]);
+    result.sort((a, b) => {
+      if (sortBy === "date_asc") {
+        const da = `${a.reservation_date}T${a.reservation_time}`;
+        const db = `${b.reservation_date}T${b.reservation_time}`;
+        return da.localeCompare(db);
+      }
+      if (sortBy === "date_desc") {
+        const da = `${a.reservation_date}T${a.reservation_time}`;
+        const db = `${b.reservation_date}T${b.reservation_time}`;
+        return db.localeCompare(da);
+      }
+      if (sortBy === "name_asc") {
+        return (a.customer_name || "").localeCompare(b.customer_name || "");
+      }
+      if (sortBy === "updated_desc") {
+        return (b.updated_at || "").localeCompare(a.updated_at || "");
+      }
+      return 0;
+    });
+    return result;
+  }, [items, chip, status, channel, dateRange, query, sortBy]);
 
   const hasActiveFilters =
     chip !== "all" || status !== "all" || channel !== "all" || dateFilter !== "all" || query.trim() !== "";
@@ -201,7 +223,7 @@ export default function RestaurantReservations() {
   return (
     <AppShell variant="restaurant" title="Reservas">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Reservas</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -215,8 +237,8 @@ export default function RestaurantReservations() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4 mb-3 border-border bg-card">
-        <div className="grid gap-3 md:grid-cols-12 md:items-end">
+      <Card className="p-3 mb-2 border-border bg-card">
+        <div className="grid gap-2.5 md:grid-cols-12 md:items-end">
           <div className="md:col-span-4">
             <Label className="text-xs text-muted-foreground">Buscar</Label>
             <div className="relative mt-1">
@@ -288,7 +310,7 @@ export default function RestaurantReservations() {
         </div>
 
         {/* Quick chips */}
-        <div className="flex flex-wrap gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 mt-2">
           {QUICK_CHIPS.map((c) => (
             <button
               key={c.id}
@@ -317,11 +339,26 @@ export default function RestaurantReservations() {
       </Card>
 
       {/* Result count */}
-      <div className="flex items-center gap-2 mb-2 px-1">
+      <div className="flex items-center justify-between gap-2 mb-2 px-1">
         <span className="text-xs text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? "reserva encontrada" : "reservas encontradas"}
           {hasActiveFilters ? " con estos filtros" : ""}
         </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground hidden sm:inline">Ordenar por</span>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+            <SelectTrigger className="h-7 text-xs w-[180px]">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_asc">Fecha más próxima</SelectItem>
+              <SelectItem value="date_desc">Fecha más reciente</SelectItem>
+              <SelectItem value="name_asc">Nombre A-Z</SelectItem>
+              <SelectItem value="updated_desc">Última actualización</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Empty states */}

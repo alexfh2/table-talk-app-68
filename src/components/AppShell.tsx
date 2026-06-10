@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -57,6 +57,12 @@ export function AppShell({
   const items = variant === "admin" ? adminNav : restaurantNav;
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isItemActive = (it: NavItem) => {
+    if (it.end) return location.pathname === it.to;
+    return location.pathname.startsWith(it.to);
+  };
 
   return (
     <SidebarProvider>
@@ -81,7 +87,7 @@ export function AppShell({
                 <SidebarMenu>
                   {items.map((it) => (
                     <SidebarMenuItem key={it.to}>
-                      <SidebarMenuButton asChild tooltip={it.label}>
+                      <SidebarMenuButton asChild isActive={isItemActive(it)} tooltip={it.label}>
                         <NavLink
                           to={it.to}
                           end={it.end}
