@@ -117,3 +117,16 @@ export function appendReviewReasonsToNotes(existing: string | null | undefined, 
   const base = (existing ?? "").trim();
   return base ? `${base}\n${line}` : line;
 }
+
+/** Extract review reasons previously appended to internal_notes by appendReviewReasonsToNotes. */
+export function parseReviewReasonsFromNotes(notes: string | null | undefined): string[] {
+  if (!notes) return [];
+  const out: string[] = [];
+  for (const line of notes.split(/\r?\n/)) {
+    const m = line.match(/^Requiere revisión:\s*(.+?)\.?\s*$/i);
+    if (m) {
+      m[1].split(";").map((s) => s.trim()).filter(Boolean).forEach((r) => out.push(r.endsWith(".") ? r : r + "."));
+    }
+  }
+  return out;
+}
