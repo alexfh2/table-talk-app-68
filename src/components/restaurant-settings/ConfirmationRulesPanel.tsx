@@ -56,6 +56,10 @@ export function ConfirmationRulesPanel({ restaurantId }: { restaurantId: string 
         <CardTitle className="text-base">Reglas de confirmación</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">Confirmación automática</h3>
+          <p className="text-xs text-muted-foreground">Cuándo el agente puede confirmar reservas sin intervención humana.</p>
+        </div>
         <section className="space-y-2">
           <Label>Confirmar automáticamente hasta</Label>
           <div className="flex items-center gap-2">
@@ -73,6 +77,10 @@ export function ConfirmationRulesPanel({ restaurantId }: { restaurantId: string 
           </p>
         </section>
 
+        <div className="space-y-1 pt-2 border-t">
+          <h3 className="text-sm font-semibold">Reservas que requieren revisión</h3>
+          <p className="text-xs text-muted-foreground">Casos en los que la reserva se guarda pero necesita validación manual.</p>
+        </div>
         <section className="space-y-2">
           <Label>¿Qué hacer con reservas creadas por voz?</Label>
           <Select
@@ -113,6 +121,10 @@ export function ConfirmationRulesPanel({ restaurantId }: { restaurantId: string 
           </ul>
         </section>
 
+        <div className="space-y-1 pt-2 border-t">
+          <h3 className="text-sm font-semibold">Límites de reserva</h3>
+          <p className="text-xs text-muted-foreground">Antelación, ventanas permitidas y avisos de capacidad.</p>
+        </div>
         <section className="space-y-2">
           <Label>Avisar cuando queden</Label>
           <div className="flex items-center gap-2">
