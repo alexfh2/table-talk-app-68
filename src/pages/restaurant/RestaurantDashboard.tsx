@@ -532,8 +532,38 @@ export default function RestaurantDashboard() {
           {/* Header */}
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center rounded-full border border-border bg-secondary/30">
+                  <button
+                    type="button"
+                    aria-label="Día anterior"
+                    onClick={() => setSelectedDate((d) => addDays(d, -1))}
+                    className="px-2 py-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Día siguiente"
+                    onClick={() => setSelectedDate((d) => addDays(d, 1))}
+                    className="px-2 py-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                {!isViewingToday && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-full px-3 text-xs"
+                    onClick={() => setSelectedDate(new Date())}
+                  >
+                    Volver a hoy
+                  </Button>
+                )}
+              </div>
               <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
-                {formatHeaderDate(today)}
+                {formatHeaderDate(selectedDate, todayISO)}
               </h1>
               <div className="flex flex-wrap items-center gap-3">
                 <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
@@ -559,7 +589,7 @@ export default function RestaurantDashboard() {
                 </span>
               </div>
             </div>
-            <Button onClick={openCreate} className="rounded-full px-5 shadow-none">
+            <Button onClick={() => openCreate()} className="rounded-full px-5 shadow-none">
               <Plus className="h-4 w-4 mr-1.5" /> Nueva reserva
             </Button>
           </header>
