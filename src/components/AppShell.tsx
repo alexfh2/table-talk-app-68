@@ -139,12 +139,12 @@ export function AppShell({
           <main className="relative flex-1 overflow-x-auto">
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.08]"
+              className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.25]"
               style={{ backgroundImage: `url(${mediterraneanBg.url})` }}
             />
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/70 via-background/60 to-background/80"
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/50 via-background/40 to-background/60"
             />
             <div className="relative p-4 sm:p-6">{children}</div>
           </main>
