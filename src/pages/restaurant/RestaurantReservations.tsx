@@ -223,7 +223,7 @@ export default function RestaurantReservations() {
   return (
     <AppShell variant="restaurant" title="Reservas">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Reservas</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
