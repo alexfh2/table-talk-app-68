@@ -423,6 +423,34 @@ export function ReservationDrawer({
             </div>
           </section>
 
+          {isCreate && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0) && (
+            <div className="space-y-2">
+              {evaluation.blockingReason && nameTouched && (
+                <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{evaluation.blockingReason}</span>
+                </div>
+              )}
+              {!evaluation.blockingReason && evaluation.reviewReasons.length > 0 && (
+                <div className="rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2.5 text-sm text-terracotta space-y-1">
+                  <p className="flex items-start gap-2 font-medium">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    Esta reserva requerirá revisión.
+                  </p>
+                  <ul className="ml-6 list-disc text-xs space-y-0.5">
+                    {evaluation.reviewReasons.map((r) => <li key={r}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {!evaluation.blockingReason && evaluation.warnings.length > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{evaluation.warnings.join(" ")}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación</h3>
             <div className="space-y-1.5">
