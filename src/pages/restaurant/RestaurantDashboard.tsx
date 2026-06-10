@@ -368,7 +368,7 @@ export default function RestaurantDashboard() {
     const cap = svc?.max_guests_per_slot ?? 20;
     const anyBooked = slots.some((t) => (occupancy.get(t) ?? 0) > 0);
     const allFull = slots.every((t) => cap - (occupancy.get(t) ?? 0) <= 0);
-    let headline = `Ocupación del ${label.toLowerCase()}`;
+    let headline = label === "Noche" ? "Ocupación de la noche" : `Ocupación del ${label.toLowerCase()}`;
     let sub = "Todas las franjas disponibles.";
     if (allFull) { headline = `${label} completo`; sub = "Sin franjas libres."; }
     else if (anyBooked) { sub = "Disponibilidad por franja."; }
