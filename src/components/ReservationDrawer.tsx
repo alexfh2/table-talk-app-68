@@ -532,7 +532,7 @@ export function ReservationDrawer({
                 </h3>
                 <Select
                   value={(v.status as string) ?? "confirmed"}
-                  onValueChange={(x) => setV({ ...v, status: x as ReservationStatus })}
+                  onValueChange={(x) => { setV({ ...v, status: x as ReservationStatus }); setStatusManuallyChanged(true); }}
                 >
                   <SelectTrigger>
                     <SelectValue />
