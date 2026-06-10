@@ -275,6 +275,48 @@ export function ReservationDrawer({
     onSaved();
   }
 
+  /** Review-mode save: persists current form. Optionally forces status. */
+  async function reviewSave(opts: { status?: ReservationStatus; confirmAnyway?: boolean; successMsg: string }) {
+    if (!v.customer_name || !v.customer_name.trim()) { toast.error("Introduce el nombre del cliente."); return; }
+    if (!partySize || partySize < 1) { toast.error("Indica el número de personas."); return; }
+    if (!v.reservation_date || !v.reservation_time) { toast.error("Selecciona fecha y hora."); return; }
+    if (evaluation?.blockingReason) { toast.error(evaluation.blockingReason); return; }
+
+    let notes = v.internal_notes ?? "";
+    if (opts.status === "confirmed" && opts.confirmAnyway && allReviewReasons.length > 0) {
+      const line = `Confirmada manualmente con avisos pendientes: ${allReviewReasons.map((r) => r.replace(/\.$/, "")).join("; ")}.`;
+      notes = notes.trim() ? `${notes.trim()}\n${line}` : line;
+    }
+
+    setSaving(true);
+    const payload: any = {
+      ...v,
+      internal_notes: notes,
+      restaurant_id: restaurantId,
+    };
+    if (opts.status) payload.status = opts.status;
+    const res = initial?.id
+      ? await supabase.from("reservations").update(payload).eq("id", initial.id)
+      : await supabase.from("reservations").insert(payload);
+    setSaving(false);
+    if (res.error) return toast.error(res.error.message);
+    toast.success(opts.successMsg);
+    onOpenChange(false);
+    onSaved();
+  }
+
+  function onReviewConfirmClick() {
+    if (evaluation?.blockingReason) {
+      toast.error(evaluation.blockingReason);
+      return;
+    }
+    if (allReviewReasons.length > 0) {
+      setConfirmWithWarnings(true);
+      return;
+    }
+    reviewSave({ status: "confirmed" as ReservationStatus, successMsg: "Reserva confirmada." });
+  }
+
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
   const isCreate = !initial && mode === "create";
