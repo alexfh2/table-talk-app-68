@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { listSchedule } from "@/lib/queries";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow } from "@/lib/types";
 import { toast } from "sonner";
 import { AlertCircle, CheckCircle2, Clock, Minus, Plus, X } from "lucide-react";
@@ -35,8 +36,7 @@ export function ReservationDrawer({
       .then(({ data }) => setZones((data as Zone[]) ?? []));
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId).order("sort_order")
       .then(({ data }) => setTables((data as RestaurantTable[]) ?? []));
-    supabase.from("restaurant_schedules").select("*").eq("restaurant_id", restaurantId)
-      .then(({ data }) => setSchedules((data as ScheduleRow[]) ?? []));
+    listSchedule(restaurantId).then(setSchedules).catch(() => setSchedules([]));
   }, [open, restaurantId]);
 
   useEffect(() => {
