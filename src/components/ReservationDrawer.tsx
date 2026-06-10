@@ -578,7 +578,7 @@ export function ReservationDrawer({
             </>
           ) : (
             <Button onClick={() => save()} disabled={saving || !canSubmit}>
-              {saving ? "Guardando…" : isEdit ? "Guardar cambios" : "Guardar reserva"}
+              {saving ? "Guardando…" : isEdit ? "Guardar cambios" : createButtonLabel}
             </Button>
           )}
         </div>
