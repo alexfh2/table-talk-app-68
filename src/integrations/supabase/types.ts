@@ -93,33 +93,54 @@ export type Database = {
       }
       blocked_dates: {
         Row: {
+          booking_mode: string | null
           created_at: string
           date: string
           end_time: string | null
           id: string
           is_full_day: boolean
+          kind: string
+          max_guests_per_slot: number | null
+          max_reservations_per_slot: number | null
           reason: string | null
           restaurant_id: string
+          service_period: string | null
+          shift_times: string[] | null
+          slot_duration_minutes: number | null
           start_time: string | null
         }
         Insert: {
+          booking_mode?: string | null
           created_at?: string
           date: string
           end_time?: string | null
           id?: string
           is_full_day?: boolean
+          kind?: string
+          max_guests_per_slot?: number | null
+          max_reservations_per_slot?: number | null
           reason?: string | null
           restaurant_id: string
+          service_period?: string | null
+          shift_times?: string[] | null
+          slot_duration_minutes?: number | null
           start_time?: string | null
         }
         Update: {
+          booking_mode?: string | null
           created_at?: string
           date?: string
           end_time?: string | null
           id?: string
           is_full_day?: boolean
+          kind?: string
+          max_guests_per_slot?: number | null
+          max_reservations_per_slot?: number | null
           reason?: string | null
           restaurant_id?: string
+          service_period?: string | null
+          shift_times?: string[] | null
+          slot_duration_minutes?: number | null
           start_time?: string | null
         }
         Relationships: [
@@ -451,6 +472,7 @@ export type Database = {
           max_reservations_per_slot: number | null
           opening_time: string | null
           restaurant_id: string
+          season_id: string | null
           service_name: string | null
           service_period: string
           shift_times: string[] | null
@@ -468,6 +490,7 @@ export type Database = {
           max_reservations_per_slot?: number | null
           opening_time?: string | null
           restaurant_id: string
+          season_id?: string | null
           service_name?: string | null
           service_period?: string
           shift_times?: string[] | null
@@ -485,6 +508,7 @@ export type Database = {
           max_reservations_per_slot?: number | null
           opening_time?: string | null
           restaurant_id?: string
+          season_id?: string | null
           service_name?: string | null
           service_period?: string
           shift_times?: string[] | null
@@ -497,6 +521,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_schedule_season_id_fkey"
+            columns: ["season_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_seasons"
             referencedColumns: ["id"]
           },
         ]
@@ -623,6 +654,47 @@ export type Database = {
           whatsapp_number?: string | null
         }
         Relationships: []
+      }
+      schedule_seasons: {
+        Row: {
+          created_at: string
+          end_date: string
+          id: string
+          name: string
+          priority: number
+          restaurant_id: string
+          start_date: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          end_date: string
+          id?: string
+          name: string
+          priority?: number
+          restaurant_id: string
+          start_date: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          end_date?: string
+          id?: string
+          name?: string
+          priority?: number
+          restaurant_id?: string
+          start_date?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_seasons_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
