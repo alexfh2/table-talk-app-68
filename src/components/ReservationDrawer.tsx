@@ -138,31 +138,69 @@ export function ReservationDrawer({
   const overCapacity =
     availability && !availability.outOfService ? partySize > availability.free : false;
 
+  const evaluation = useMemo(() => {
+    if (isEditOrReviewSkip()) return null;
+    const avail = availability
+      ? {
+          outOfService: !!availability.outOfService,
+          free: availability.outOfService ? null : availability.free,
+          capacity: availability.outOfService ? null : availability.capacity,
+          service: null as null,
+        }
+      : null;
+    return evaluateReservationRules(
+      {
+        customer_name: v.customer_name,
+        customer_phone: v.customer_phone,
+        reservation_date: v.reservation_date,
+        reservation_time: v.reservation_time,
+        party_size: v.party_size,
+        id: initial?.id,
+      },
+      agentSettings,
+      avail,
+      dayReservations,
+    );
+    function isEditOrReviewSkip() { return false; }
+  }, [v, availability, agentSettings, dayReservations, initial?.id]);
+
   async function save(extra?: Partial<Reservation>) {
-    // Validation
-    if (!v.customer_name || !v.customer_name.trim()) {
-      toast.error("Introduce el nombre del cliente.");
-      return;
-    }
-    if (!partySize || partySize < 1) {
-      toast.error("Indica el número de personas.");
-      return;
-    }
-    if (!v.reservation_date || !v.reservation_time) {
-      toast.error("Selecciona fecha y hora.");
-      return;
-    }
-    if (!initial && overCapacity) {
-      toast.error("Esta franja no tiene plazas suficientes.");
-      return;
+    // For new manual reservations, apply confirmation rules
+    const isNewManual = !initial && !extra?.status;
+    let appliedStatus: ReservationStatus | undefined = extra?.status as ReservationStatus | undefined;
+    let appliedNotes = v.internal_notes ?? "";
+    if (isNewManual) {
+      if (!evaluation || !evaluation.canSave) {
+        toast.error(evaluation?.blockingReason ?? "Revisa los datos de la reserva.");
+        return;
+      }
+      appliedStatus = (evaluation.suggestedStatus ?? "confirmed") as ReservationStatus;
+      if (appliedStatus === "requires_human") {
+        appliedNotes = appendReviewReasonsToNotes(v.internal_notes, evaluation.reviewReasons);
+      }
+    } else {
+      // Edit path: keep existing simple validation
+      if (!v.customer_name || !v.customer_name.trim()) {
+        toast.error("Introduce el nombre del cliente.");
+        return;
+      }
+      if (!partySize || partySize < 1) {
+        toast.error("Indica el número de personas.");
+        return;
+      }
+      if (!v.reservation_date || !v.reservation_time) {
+        toast.error("Selecciona fecha y hora.");
+        return;
+      }
     }
     setSaving(true);
     const payload = {
       ...v,
       ...extra,
+      internal_notes: appliedNotes,
       restaurant_id: restaurantId,
       // Defaults for manual creation
-      status: (extra?.status ?? v.status ?? "confirmed") as ReservationStatus,
+      status: (appliedStatus ?? v.status ?? "confirmed") as ReservationStatus,
       channel: (v.channel ?? "manual") as ReservationChannel,
     } as any;
     const res = initial?.id
@@ -170,7 +208,13 @@ export function ReservationDrawer({
       : await supabase.from("reservations").insert(payload);
     setSaving(false);
     if (res.error) return toast.error(res.error.message);
-    toast.success(initial ? "Reserva actualizada." : "Reserva guardada.");
+    if (initial) {
+      toast.success("Reserva actualizada.");
+    } else if (appliedStatus === "requires_human") {
+      toast.success("Reserva guardada para revisar.");
+    } else {
+      toast.success("Reserva guardada.");
+    }
     onOpenChange(false);
     onSaved();
   }
