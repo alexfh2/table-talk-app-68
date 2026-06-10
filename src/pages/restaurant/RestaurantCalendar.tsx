@@ -406,7 +406,7 @@ function ReservationCard({
   const reason = isReview ? parseReviewReasonsFromNotes(r.internal_notes)[0] : null;
 
   const statusMap: Record<string, { label: string; cls: string }> = {
-    confirmed: { label: "Confirmada", cls: "bg-sage/15 text-sage-foreground border-sage/30" },
+    confirmed: { label: "Confirmada", cls: "bg-success/15 text-success border-success/30" },
     pending: { label: "Pendiente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
     modified: { label: "Modificada", cls: "bg-blue-100 text-blue-800 border-blue-200" },
     requires_human: { label: "Requiere revisión", cls: "bg-terracotta/15 text-terracotta border-terracotta/30" },
