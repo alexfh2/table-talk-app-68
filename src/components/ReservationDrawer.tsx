@@ -610,8 +610,9 @@ export function ReservationDrawer({
           </section>
         </div>
 
-          {isEdit && (
+          {(isEdit || isReview) && (
             <>
+              {isEdit && (
               <section className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Estado de la reserva
@@ -633,12 +634,27 @@ export function ReservationDrawer({
                   Origen: <span className="text-foreground font-medium">{CHANNEL_LABEL[(v.channel as string) ?? "manual"]}</span>
                 </p>
               </section>
+              )}
+              {isReview && (
+                <p className="text-xs text-muted-foreground">
+                  Origen: <span className="text-foreground font-medium">{CHANNEL_LABEL[(v.channel as string) ?? "manual"]}</span>
+                </p>
+              )}
 
               <section className="space-y-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Acciones de reserva
                 </h3>
                 <div className="flex flex-wrap gap-2">
+                  {isReview && (
+                    <button
+                      type="button"
+                      onClick={() => reviewSave({ status: "pending" as ReservationStatus, successMsg: "Reserva marcada como pendiente." })}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <Clock className="h-3.5 w-3.5" /> Mantener pendiente
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setConfirmCancel(true)}
@@ -683,8 +699,14 @@ export function ReservationDrawer({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           {isReview ? (
             <>
-              <Button variant="outline" onClick={() => save({ status: "pending" })}>Mantener pendiente</Button>
-              <Button onClick={() => save({ status: "confirmed" })} disabled={saving}>
+              <Button
+                variant="outline"
+                onClick={() => reviewSave({ successMsg: "Cambios guardados." })}
+                disabled={saving || !!evaluation?.blockingReason}
+              >
+                Guardar cambios
+              </Button>
+              <Button onClick={onReviewConfirmClick} disabled={saving || !!evaluation?.blockingReason}>
                 <CheckCircle2 className="h-4 w-4 mr-1.5" /> Confirmar reserva
               </Button>
             </>
