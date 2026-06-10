@@ -60,6 +60,7 @@ export function ReservationDrawer({
   const [nameTouched, setNameTouched] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
+  const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -80,6 +81,7 @@ export function ReservationDrawer({
       channel: "manual" as ReservationChannel,
       customer_notes: "", internal_notes: "", table_id: null,
     });
+    setStatusManuallyChanged(false);
   }, [initial, open]);
 
   // Load same-day reservations to compute availability
@@ -176,19 +178,15 @@ export function ReservationDrawer({
       if (appliedStatus === "requires_human") {
         appliedNotes = appendReviewReasonsToNotes(v.internal_notes, evaluation.reviewReasons);
       }
-    } else {
-      // Edit path: keep existing simple validation
-      if (!v.customer_name || !v.customer_name.trim()) {
-        toast.error("Introduce el nombre del cliente.");
+    } else if (initial && !extra?.status) {
+      // Edit path: apply same rules but respect manual status override
+      if (!evaluation || !evaluation.canSave) {
+        toast.error(evaluation?.blockingReason ?? "Revisa los datos de la reserva.");
         return;
       }
-      if (!partySize || partySize < 1) {
-        toast.error("Indica el número de personas.");
-        return;
-      }
-      if (!v.reservation_date || !v.reservation_time) {
-        toast.error("Selecciona fecha y hora.");
-        return;
+      if (!statusManuallyChanged && evaluation.suggestedStatus === "requires_human") {
+        appliedStatus = "requires_human" as ReservationStatus;
+        appliedNotes = appendReviewReasonsToNotes(v.internal_notes, evaluation.reviewReasons);
       }
     }
     setSaving(true);
@@ -207,7 +205,7 @@ export function ReservationDrawer({
     setSaving(false);
     if (res.error) return toast.error(res.error.message);
     if (initial) {
-      toast.success("Reserva actualizada.");
+      toast.success("Cambios guardados.");
     } else if (appliedStatus === "requires_human") {
       toast.success("Reserva guardada para revisar.");
     } else {
@@ -253,9 +251,7 @@ export function ReservationDrawer({
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
   const isCreate = !initial && mode === "create";
-  const canSubmit = isCreate
-    ? !!evaluation?.canSave
-    : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
+  const canSubmit = (isCreate || isEdit) ? !!evaluation?.canSave : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
   const createButtonLabel =
     evaluation?.suggestedStatus === "requires_human" ? "Guardar para revisar" : "Guardar reserva";
 
@@ -423,9 +419,9 @@ export function ReservationDrawer({
             </div>
           </section>
 
-          {isCreate && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0) && (
+          {(isCreate || isEdit) && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
             <div className="space-y-2">
-              {evaluation.blockingReason && nameTouched && (
+              {evaluation.blockingReason && (nameTouched || isEdit || evaluation.blockingReason !== "Introduce el nombre del cliente.") && (
                 <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>{evaluation.blockingReason}</span>
@@ -435,7 +431,9 @@ export function ReservationDrawer({
                 <div className="rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2.5 text-sm text-terracotta space-y-1">
                   <p className="flex items-start gap-2 font-medium">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                    Esta reserva requerirá revisión.
+                    {isEdit && statusManuallyChanged && v.status === "confirmed"
+                      ? "Esta reserva tiene motivos de revisión. Puedes guardarla como confirmada bajo tu responsabilidad."
+                      : "Esta reserva requerirá revisión."}
                   </p>
                   <ul className="ml-6 list-disc text-xs space-y-0.5">
                     {evaluation.reviewReasons.map((r) => <li key={r}>{r}</li>)}
@@ -534,7 +532,7 @@ export function ReservationDrawer({
                 </h3>
                 <Select
                   value={(v.status as string) ?? "confirmed"}
-                  onValueChange={(x) => setV({ ...v, status: x as ReservationStatus })}
+                  onValueChange={(x) => { setV({ ...v, status: x as ReservationStatus }); setStatusManuallyChanged(true); }}
                 >
                   <SelectTrigger>
                     <SelectValue />
