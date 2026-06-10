@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   LogOut,
   UtensilsCrossed,
+  Sun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -38,10 +39,9 @@ const adminNav: NavItem[] = [
 ];
 
 const restaurantNav: NavItem[] = [
-  { to: "/restaurant", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/restaurant/calendar", label: "Calendario", icon: CalendarDays },
+  { to: "/restaurant", label: "Hoy", icon: Sun, end: true },
   { to: "/restaurant/reservations", label: "Reservas", icon: ListChecks },
-  { to: "/restaurant/handoff", label: "Requiere atención", icon: AlertTriangle },
+  { to: "/restaurant/calendar", label: "Calendario", icon: CalendarDays },
   { to: "/restaurant/settings", label: "Configuración", icon: Settings },
 ];
 
