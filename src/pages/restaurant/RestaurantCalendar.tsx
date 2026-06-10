@@ -197,7 +197,9 @@ export default function RestaurantCalendar() {
       ) : (
         <DayView
           summary={daySummary}
-          allSchedulesForDow={schedules.filter((s) => s.day_of_week === date.getDay())}
+          allSchedulesForDow={ctx.schedule.filter(
+            (s) => s.day_of_week === date.getDay() && (s.season_id ?? null) === (daySummary as any).seasonId,
+          )}
           tableLabel={tableLabel}
           onOpenReservation={openReservation}
           onCreateAt={(time) => openCreate({ date: format(date, "yyyy-MM-dd"), time })}
