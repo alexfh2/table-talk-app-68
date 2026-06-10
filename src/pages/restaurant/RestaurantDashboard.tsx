@@ -146,12 +146,22 @@ export default function RestaurantDashboard() {
 
   const occupancy = useMemo(() => {
     const map = new Map<string, number>();
+    // Helper: a reservation only counts if it falls within an active service today
+    const inActiveService = (t: string) => {
+      const time = t.slice(0, 5);
+      return todaySchedule.some((s) => {
+        const o = s.opening_time!.slice(0, 5);
+        const c = s.closing_time!.slice(0, 5);
+        return time >= o && time < c;
+      });
+    };
     for (const r of todayRes) {
+      if (r.status === "requires_human" && !inActiveService(r.reservation_time)) continue;
       const key = r.reservation_time.slice(0, 5);
       map.set(key, (map.get(key) ?? 0) + r.party_size);
     }
     return map;
-  }, [todayRes]);
+  }, [todayRes, todaySchedule]);
 
   const totalGuests = visibleRes.reduce((acc, r) => acc + r.party_size, 0);
   const pendingCount = visibleRes.filter((r) => r.status === "pending").length;
