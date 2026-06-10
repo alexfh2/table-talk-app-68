@@ -151,7 +151,7 @@ export default function RestaurantReservations() {
   const filtered = useMemo(() => {
     const today = todayISO();
     const q = query.trim().toLowerCase();
-    return items.filter((r) => {
+    const result = items.filter((r) => {
       if (chip === "upcoming" && r.reservation_date < today) return false;
       if (chip === "today" && r.reservation_date !== today) return false;
       if (chip === "requires_human" && r.status !== "requires_human") return false;
@@ -167,7 +167,27 @@ export default function RestaurantReservations() {
       }
       return true;
     });
-  }, [items, chip, status, channel, dateRange, query]);
+    result.sort((a, b) => {
+      if (sortBy === "date_asc") {
+        const da = `${a.reservation_date}T${a.reservation_time}`;
+        const db = `${b.reservation_date}T${b.reservation_time}`;
+        return da.localeCompare(db);
+      }
+      if (sortBy === "date_desc") {
+        const da = `${a.reservation_date}T${a.reservation_time}`;
+        const db = `${b.reservation_date}T${b.reservation_time}`;
+        return db.localeCompare(da);
+      }
+      if (sortBy === "name_asc") {
+        return (a.customer_name || "").localeCompare(b.customer_name || "");
+      }
+      if (sortBy === "updated_desc") {
+        return (b.updated_at || "").localeCompare(a.updated_at || "");
+      }
+      return 0;
+    });
+    return result;
+  }, [items, chip, status, channel, dateRange, query, sortBy]);
 
   const hasActiveFilters =
     chip !== "all" || status !== "all" || channel !== "all" || dateFilter !== "all" || query.trim() !== "";
