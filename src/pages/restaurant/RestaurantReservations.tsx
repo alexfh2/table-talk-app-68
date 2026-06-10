@@ -36,6 +36,7 @@ type DateFilter = "all" | "today" | "tomorrow" | "this_week" | "upcoming" | "cus
 type ChannelFilter = "all" | ReservationChannel;
 type StatusFilter = "all" | ReservationStatus;
 type QuickChip = "all" | "upcoming" | "today" | "requires_human" | "pending" | "cancelled";
+type SortBy = "date_asc" | "date_desc" | "name_asc" | "updated_desc";
 
 const CHANNEL_SHORT: Record<ReservationChannel, string> = {
   manual: "Manual",
