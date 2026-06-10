@@ -12,7 +12,8 @@ import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDraw
 import { parseReviewReasonsFromNotes } from "@/lib/reservationRules";
 import { addDays, format, startOfWeek, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
-import { Plus, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, AlertCircle, ExternalLink } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const ACTIVE_STATUS = new Set(["pending", "confirmed", "modified", "requires_human"]);
 
@@ -104,6 +105,7 @@ export default function RestaurantCalendar() {
   const { profile } = useAuth();
   const rid = profile?.restaurant_id ?? "";
   const [view, setView] = useState<"day" | "week">("week");
+  const navigate = useNavigate();
   const [date, setDate] = useState(new Date());
   const [items, setItems] = useState<Reservation[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -184,6 +186,15 @@ export default function RestaurantCalendar() {
           <Button size="icon" variant="ghost" onClick={() => setDate(addDays(date, view === "day" ? 1 : 7))}><ChevronRight className="h-4 w-4" /></Button>
         </div>
         <Button size="sm" variant="outline" onClick={() => setDate(new Date())}>Hoy</Button>
+        {view === "day" && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate(`/restaurant?date=${format(date, "yyyy-MM-dd")}`)}
+          >
+            <ExternalLink className="h-4 w-4 mr-1" />Ver en Hoy
+          </Button>
+        )}
         <div className="ml-auto">
           <Button onClick={() => openCreate()}><Plus className="h-4 w-4 mr-1" />Nueva reserva</Button>
         </div>
