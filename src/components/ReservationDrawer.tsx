@@ -751,6 +751,30 @@ export function ReservationDrawer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <AlertDialog open={confirmWithWarnings} onOpenChange={setConfirmWithWarnings}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esta reserva todavía tiene avisos</AlertDialogTitle>
+            <AlertDialogDescription>
+              La reserva aún tiene motivos de revisión. Puedes confirmarla igualmente si ya lo has comprobado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {allReviewReasons.length > 0 && (
+            <ul className="ml-5 list-disc text-sm text-muted-foreground space-y-0.5">
+              {allReviewReasons.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => reviewSave({ status: "confirmed" as ReservationStatus, confirmAnyway: true, successMsg: "Reserva confirmada." })}
+            >
+              Confirmar igualmente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
