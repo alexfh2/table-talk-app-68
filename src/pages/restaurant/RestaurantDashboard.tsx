@@ -489,7 +489,7 @@ export default function RestaurantDashboard() {
               <div className="flex items-baseline gap-2 ml-auto">
                 {reviewCount === 0 ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Todo revisado
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Hoy revisado
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-terracotta">
@@ -502,10 +502,11 @@ export default function RestaurantDashboard() {
           </div>
 
           {/* Occupancy */}
-          {(filter === "all" || filter === "lunch") && lunchSvc && (
+          {filter === "all" && (lunchSvc || dinnerSvc) && <DayStatusBlock />}
+          {filter === "lunch" && lunchSvc && (
             <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
           )}
-          {(filter === "all" || filter === "dinner") && dinnerSvc && (
+          {filter === "dinner" && dinnerSvc && (
             <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
           )}
 
@@ -513,7 +514,7 @@ export default function RestaurantDashboard() {
           <section className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between">
               <h2 className="font-serif text-lg">Agenda</h2>
-              <span className="text-xs text-muted-foreground">{visibleRes.length} en total</span>
+              <span className="text-xs text-muted-foreground">{visibleRes.length} {visibleRes.length === 1 ? "reserva" : "reservas"} en total</span>
             </div>
             {filter === "all" ? (
               <>
