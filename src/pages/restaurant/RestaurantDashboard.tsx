@@ -188,228 +188,359 @@ export default function RestaurantDashboard() {
     );
   }
 
-  // Group reservations by hour
-  const grouped = new Map<string, Reservation[]>();
-  for (const r of todayRes) {
-    const hk = r.reservation_time.slice(0, 2) + ":00";
-    if (!grouped.has(hk)) grouped.set(hk, []);
-    grouped.get(hk)!.push(r);
+  // ---- Helpers ----
+  function groupByHour(list: Reservation[]) {
+    const m = new Map<string, Reservation[]>();
+    for (const r of list) {
+      const hk = r.reservation_time.slice(0, 2) + ":00";
+      if (!m.has(hk)) m.set(hk, []);
+      m.get(hk)!.push(r);
+    }
+    return Array.from(m.entries()).sort(([a], [b]) => a.localeCompare(b));
   }
-  const groupKeys = Array.from(grouped.keys()).sort();
+
+  async function confirmAndCancel(r: Reservation) {
+    if (!window.confirm(`¿Cancelar la reserva de ${r.customer_name}?`)) return;
+    await cancelReservation(r);
+  }
+
+  function ReservationRow({ r }: { r: Reservation }) {
+    const seated = seatedLocal.has(r.id);
+    const review = r.status === "requires_human";
+    const note = review && !r.customer_phone ? "Falta teléfono" : r.customer_notes;
+    return (
+      <div
+        className={cn(
+          "rounded-xl border border-border bg-background/30 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2",
+          review && "border-terracotta/30 bg-terracotta/5",
+          seated && "border-info/30 bg-info/5",
+        )}
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs tabular-nums text-muted-foreground">{r.reservation_time.slice(0, 5)}</span>
+            <span className="font-medium text-foreground truncate">{r.customer_name}</span>
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <Users className="h-3.5 w-3.5" /> {r.party_size} pax
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              {r.channel === "future_voice" ? <Mic className="h-3.5 w-3.5" /> : <Hand className="h-3.5 w-3.5" />}
+              {r.channel === "future_voice" ? "Voz" : "Manual"}
+            </span>
+            {r.customer_phone && (
+              <span className="hidden sm:inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <Phone className="h-3.5 w-3.5" /> {r.customer_phone}
+              </span>
+            )}
+          </div>
+          {note && (
+            <p className={cn("mt-1 text-xs", review ? "text-terracotta" : "text-muted-foreground")}>
+              {review && <AlertCircle className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
+              {note}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusChip value={seated ? "seated" : r.status} />
+          {review ? (
+            <Button size="sm" variant="outline" className="rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
+              Revisar
+            </Button>
+          ) : !seated ? (
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => markSeated(r)}>
+              <Check className="h-3.5 w-3.5 mr-1.5" /> Marcar sentado
+            </Button>
+          ) : null}
+          <Button size="sm" variant="ghost" className="rounded-full" onClick={() => openEdit(r)}>
+            <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="ghost" className="rounded-full px-2">
+                <ChevronDown className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openEdit(r)}>Editar reserva</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => confirmAndCancel(r)} className="text-destructive">
+                Cancelar reserva
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+    );
+  }
+
+  function ServiceBlock({
+    label,
+    kind,
+    svc,
+    items,
+  }: {
+    label: string;
+    kind: "lunch" | "dinner";
+    svc: ScheduleRow | null;
+    items: Reservation[];
+  }) {
+    const groups = groupByHour(items);
+    const range = svc?.opening_time && svc?.closing_time
+      ? `${svc.opening_time.slice(0, 5)}–${svc.closing_time.slice(0, 5)}`
+      : kind === "lunch" ? "13:00–16:00" : "20:00–23:30";
+    return (
+      <div>
+        <div className="px-5 py-3 flex items-baseline justify-between bg-secondary/30 border-y border-border">
+          <h3 className="font-serif text-base">{label}</h3>
+          <span className="text-[11px] text-muted-foreground tabular-nums">{range} · {items.length} reservas</span>
+        </div>
+        {groups.length === 0 ? (
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm font-medium text-foreground">Sin reservas para el {label.toLowerCase()}</p>
+            <p className="text-xs text-muted-foreground mt-1">Todavía no hay reservas entre {range}.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {groups.map(([hk, list]) => (
+              <div key={hk} className="grid grid-cols-[64px_1fr] gap-4 px-5 py-4">
+                <div className="pt-1.5">
+                  <div className="font-serif text-2xl tabular-nums text-foreground/90">{hk}</div>
+                </div>
+                <div className="space-y-2">
+                  {list.map((r) => <ReservationRow key={r.id} r={r} />)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function OccupancyBlock({ svc, kind, label }: { svc: ScheduleRow | null; kind: "lunch" | "dinner"; label: string }) {
+    const slots = buildSlotList(svc);
+    if (slots.length === 0) return null;
+    const cap = svc?.max_guests_per_slot ?? 20;
+    const anyBooked = slots.some((t) => (occupancy.get(t) ?? 0) > 0);
+    const allFull = slots.every((t) => cap - (occupancy.get(t) ?? 0) <= 0);
+    let headline = `${label} tranquilo`;
+    let sub = "Todas las franjas disponibles.";
+    if (allFull) { headline = `${label} completo`; sub = "Sin franjas libres."; }
+    else if (anyBooked) { headline = `Ocupación del ${label.toLowerCase()}`; sub = "Disponibilidad por franja."; }
+    return (
+      <div className="rounded-2xl border border-border bg-card px-5 py-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <div>
+            <p className="font-serif text-base text-foreground">{headline}</p>
+            <p className="text-xs text-muted-foreground">{sub}</p>
+          </div>
+          <span className="text-[11px] text-muted-foreground">Capacidad {cap} pax / franja</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {slots.map((t) => {
+            const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
+            const full = free === 0;
+            const tight = free > 0 && free <= 4;
+            return (
+              <span
+                key={t}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[11px] tabular-nums",
+                  full && "border-terracotta/40 bg-terracotta/10 text-terracotta",
+                  tight && "border-warning/40 bg-warning/15 text-foreground",
+                  !full && !tight && "border-border bg-secondary/30 text-muted-foreground",
+                )}
+              >
+                <span className="text-foreground/80 font-medium">{t}</span>
+                <span className="mx-1.5 opacity-50">·</span>
+                {full ? "Completo" : `${free} libres`}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const summary = [
+    { v: visibleRes.length, l: visibleRes.length === 1 ? "reserva" : "reservas" },
+    { v: totalGuests, l: totalGuests === 1 ? "comensal" : "comensales" },
+    { v: pendingCount, l: pendingCount === 1 ? "pendiente" : "pendientes" },
+  ];
+
+  const lunchItems = todayRes.filter((r) => inService(r.reservation_time, "lunch"));
+  const dinnerItems = todayRes.filter((r) => inService(r.reservation_time, "dinner"));
+
+  const filterOptions: { v: ServiceFilter; label: string }[] = [
+    { v: "all", label: "Todo el día" },
+    { v: "lunch", label: "Mediodía" },
+    { v: "dinner", label: "Noche" },
+  ];
 
   return (
     <AppShell variant="restaurant" title="Hoy">
       <div className="grid xl:grid-cols-[1fr_340px] gap-6 max-w-[1500px]">
         {/* MAIN COLUMN */}
-        <div className="space-y-6 min-w-0">
+        <div className="space-y-5 min-w-0">
           {/* Header */}
-          <header className="flex flex-wrap items-end justify-between gap-4 pb-2">
-            <div className="min-w-0">
-              <h1 className="font-serif text-3xl sm:text-4xl tracking-tight text-foreground">
+          <header className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0 space-y-3">
+              <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
                 {formatHeaderDate(today)}
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {svc
-                  ? `Servicio de ${svc.service_period === "lunch" ? "mediodía" : "noche"} · ${svc.opening_time?.slice(0, 5)}–${svc.closing_time?.slice(0, 5)}`
-                  : "Restaurante cerrado hoy"}
-                <span className="mx-2 text-border">·</span>
-                <span className="inline-flex items-center gap-1.5 text-success">
+              <div className="flex flex-wrap items-center gap-3">
+                <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
+                  {filterOptions.map((o) => (
+                    <button
+                      key={o.v}
+                      role="tab"
+                      aria-selected={filter === o.v}
+                      onClick={() => setFilter(o.v)}
+                      className={cn(
+                        "px-3.5 py-1.5 text-xs font-medium rounded-full transition-colors",
+                        filter === o.v
+                          ? "bg-card text-foreground shadow-[0_1px_0_hsl(var(--border))]"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <span className="inline-flex items-center gap-1.5 text-xs text-success">
                   <span className="h-1.5 w-1.5 rounded-full bg-success" /> Agente conectado
                 </span>
-              </p>
+              </div>
             </div>
             <Button onClick={openCreate} className="rounded-full px-5 shadow-none">
               <Plus className="h-4 w-4 mr-1.5" /> Nueva reserva
             </Button>
           </header>
 
-          {/* Service summary */}
-          <div className="rounded-2xl border border-border bg-card">
-            <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-border">
-              {[
-                { v: todayRes.length, l: "reservas" },
-                { v: totalGuests, l: "comensales" },
-                { v: pendingCount, l: "pendientes" },
-                { v: reviewCount, l: "requieren revisión" },
-              ].map((m, i) => (
-                <div key={i} className="px-5 py-4">
-                  <div className="font-serif text-3xl text-foreground tabular-nums">{m.v}</div>
-                  <div className="text-xs text-muted-foreground mt-0.5">{m.l}</div>
+          {/* Editorial summary */}
+          <div className="rounded-2xl border border-border bg-card px-5 py-4">
+            <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
+              {summary.map((m, i) => (
+                <div key={i} className="flex items-baseline gap-2">
+                  <span className="font-serif text-3xl tabular-nums text-foreground leading-none">{m.v}</span>
+                  <span className="text-xs text-muted-foreground">{m.l}</span>
                 </div>
               ))}
+              <div className="flex items-baseline gap-2 ml-auto">
+                {reviewCount === 0 ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Todo revisado
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs text-terracotta">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    {reviewCount === 1 ? "1 requiere revisión" : `${reviewCount} requieren revisión`}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Occupancy line */}
-          {slotList.length > 0 && (
-            <div className="rounded-2xl border border-border bg-card px-5 py-4">
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Ocupación del servicio</h2>
-                <span className="text-[11px] text-muted-foreground">Capacidad {capacityPerSlot} pax / franja</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {slotList.map((t) => {
-                  const used = occupancy.get(t) ?? 0;
-                  const free = Math.max(0, capacityPerSlot - used);
-                  const full = free === 0;
-                  const tight = free > 0 && free <= 4;
-                  return (
-                    <div
-                      key={t}
-                      className={cn(
-                        "rounded-full border px-3 py-1.5 text-xs flex items-center gap-2",
-                        full && "border-terracotta/40 bg-terracotta/10 text-terracotta",
-                        tight && "border-warning/40 bg-warning/15 text-foreground",
-                        !full && !tight && "border-border bg-secondary/40 text-foreground",
-                      )}
-                    >
-                      <span className="font-medium tabular-nums">{t}</span>
-                      <span className="text-muted-foreground">·</span>
-                      <span>{full ? "Completo" : `${free} plazas libres`}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {/* Occupancy */}
+          {(filter === "all" || filter === "lunch") && lunchSvc && (
+            <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
+          )}
+          {(filter === "all" || filter === "dinner") && dinnerSvc && (
+            <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
           )}
 
           {/* Agenda */}
-          <section className="rounded-2xl border border-border bg-card">
-            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
-              <h2 className="font-serif text-lg">Agenda de reservas</h2>
-              <span className="text-xs text-muted-foreground">{todayRes.length} en total</span>
+          <section className="rounded-2xl border border-border bg-card overflow-hidden">
+            <div className="px-5 py-4 flex items-center justify-between">
+              <h2 className="font-serif text-lg">Agenda</h2>
+              <span className="text-xs text-muted-foreground">{visibleRes.length} en total</span>
             </div>
-            {groupKeys.length === 0 ? (
-              <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-                Aún no hay reservas para hoy.
-              </div>
+            {filter === "all" ? (
+              <>
+                <ServiceBlock label="Mediodía" kind="lunch" svc={lunchSvc} items={lunchItems} />
+                <ServiceBlock label="Noche" kind="dinner" svc={dinnerSvc} items={dinnerItems} />
+              </>
+            ) : filter === "lunch" ? (
+              <ServiceBlock label="Mediodía" kind="lunch" svc={lunchSvc} items={lunchItems} />
             ) : (
-              <div className="divide-y divide-border">
-                {groupKeys.map((hk) => (
-                  <div key={hk} className="grid grid-cols-[64px_1fr] gap-4 px-5 py-4">
-                    <div className="pt-1.5">
-                      <div className="font-serif text-2xl tabular-nums text-foreground/90">{hk}</div>
-                    </div>
-                    <div className="space-y-2">
-                      {grouped.get(hk)!.map((r) => {
-                        const seated = seatedLocal.has(r.id);
-                        const review = r.status === "requires_human";
-                        const note = review && !r.customer_phone ? "Falta teléfono" : r.customer_notes;
-                        return (
-                          <div
-                            key={r.id}
-                            className={cn(
-                              "group rounded-xl border border-border bg-background/40 px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2",
-                              review && "border-terracotta/30 bg-terracotta/5",
-                              seated && "border-info/30 bg-info/5",
-                            )}
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs tabular-nums text-muted-foreground">{r.reservation_time.slice(0, 5)}</span>
-                                <span className="font-medium text-foreground truncate">{r.customer_name}</span>
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  <Users className="h-3.5 w-3.5" /> {r.party_size} pax
-                                </span>
-                                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                  {r.channel === "future_voice" ? <Mic className="h-3.5 w-3.5" /> : <Hand className="h-3.5 w-3.5" />}
-                                  {r.channel === "future_voice" ? "Voz" : "Manual"}
-                                </span>
-                                {r.customer_phone && (
-                                  <span className="hidden sm:inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                    <Phone className="h-3.5 w-3.5" /> {r.customer_phone}
-                                  </span>
-                                )}
-                              </div>
-                              {note && (
-                                <p className={cn("mt-1 text-xs", review ? "text-terracotta" : "text-muted-foreground")}>
-                                  {review && <AlertCircle className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />}
-                                  {note}
-                                </p>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <StatusChip value={seated ? "seated" : r.status} />
-                              {review && (
-                                <Button size="sm" variant="outline" className="rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
-                                  Revisar
-                                </Button>
-                              )}
-                              {!seated && !review && (
-                                <Button size="sm" variant="outline" className="rounded-full" onClick={() => markSeated(r)}>
-                                  <Check className="h-3.5 w-3.5 mr-1" /> Sentar
-                                </Button>
-                              )}
-                              <Button size="sm" variant="ghost" className="rounded-full" onClick={() => openEdit(r)}>
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="rounded-full px-2">
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => openEdit(r)}>Editar reserva</DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => cancelReservation(r)} className="text-destructive">
-                                    Cancelar reserva
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <ServiceBlock label="Noche" kind="dinner" svc={dinnerSvc} items={dinnerItems} />
             )}
           </section>
         </div>
 
         {/* RIGHT PANEL */}
         <aside className="space-y-4">
-          {/* Requiere revisión */}
+          {/* Revisión */}
           <div className="rounded-2xl border border-border bg-card">
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-terracotta" />
-              <h3 className="font-medium text-sm">Requiere revisión</h3>
-              <span className="ml-auto text-xs text-muted-foreground">{reviewItems.length}</span>
+              {reviewItems.length === 0 ? (
+                <CheckCircle2 className="h-4 w-4 text-success" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-terracotta" />
+              )}
+              <h3 className="font-medium text-sm">
+                {reviewItems.length === 0 ? "Todo revisado" : "Necesita revisión"}
+              </h3>
+              {reviewItems.length > 0 && (
+                <span className="ml-auto text-xs text-muted-foreground">{reviewItems.length}</span>
+              )}
             </div>
             <div className="p-3 space-y-2">
-              {reviewItems.length === 0 && (
-                <p className="px-2 py-3 text-xs text-muted-foreground">Sin reservas para revisar.</p>
+              {reviewItems.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-muted-foreground">
+                  No hay reservas pendientes de comprobar.
+                </p>
+              ) : (
+                <>
+                  <p className="px-2 pt-1 pb-1 text-xs text-muted-foreground">
+                    {reviewItems.length === 1
+                      ? "1 reserva creada por voz necesita confirmación."
+                      : `${reviewItems.length} reservas creadas por voz necesitan confirmación.`}
+                  </p>
+                  {reviewItems.map((r) => (
+                    <div key={r.id} className="rounded-xl border border-terracotta/30 bg-terracotta/5 px-3 py-2.5">
+                      <p className="text-sm font-medium">
+                        {r.customer_name}
+                        <span className="text-muted-foreground font-normal"> · {r.party_size} pax · {r.reservation_time.slice(0, 5)}</span>
+                      </p>
+                      <p className="text-xs text-terracotta mt-0.5">
+                        {!r.customer_phone ? "Falta teléfono" : (r.customer_notes ?? "Datos por confirmar")}
+                      </p>
+                      <Button size="sm" variant="outline" className="mt-2 h-7 rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
+                        Revisar
+                      </Button>
+                    </div>
+                  ))}
+                </>
               )}
-              {reviewItems.map((r) => (
-                <div key={r.id} className="rounded-xl border border-terracotta/30 bg-terracotta/5 px-3 py-2.5">
-                  <p className="text-sm font-medium">{r.customer_name} <span className="text-muted-foreground font-normal">· {r.party_size} pax · {r.reservation_time.slice(0, 5)}</span></p>
-                  <p className="text-xs text-terracotta mt-0.5">{!r.customer_phone ? "Falta teléfono" : (r.customer_notes ?? "Datos por confirmar")}</p>
-                  <Button size="sm" variant="outline" className="mt-2 h-7 rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
-                    Revisar
-                  </Button>
-                </div>
-              ))}
             </div>
           </div>
 
-          {/* Disponibilidad rápida */}
-          {slotList.length > 0 && (
+          {/* Huecos disponibles */}
+          {(lunchSvc || dinnerSvc) && (
             <div className="rounded-2xl border border-border bg-card">
               <div className="px-4 py-3 border-b border-border">
-                <h3 className="font-medium text-sm">Disponibilidad rápida</h3>
+                <h3 className="font-medium text-sm">Huecos disponibles</h3>
               </div>
-              <div className="p-3 space-y-1">
-                {slotList.slice(0, 6).map((t) => {
-                  const used = occupancy.get(t) ?? 0;
-                  const free = Math.max(0, capacityPerSlot - used);
-                  const full = free === 0;
+              <div className="p-3 space-y-3">
+                {[{ svc: lunchSvc, label: "Mediodía" }, { svc: dinnerSvc, label: "Noche" }].map(({ svc: s, label }) => {
+                  if (!s) return null;
+                  const slots = buildSlotList(s);
+                  const cap = s.max_guests_per_slot ?? 20;
                   return (
-                    <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
-                      <span className="tabular-nums text-foreground">{t}</span>
-                      <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
-                        {full ? "Completo" : `${free} plazas libres`}
-                      </span>
+                    <div key={label}>
+                      <p className="px-2 pb-1 text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+                      {slots.slice(0, 6).map((t) => {
+                        const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
+                        const full = free === 0;
+                        return (
+                          <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
+                            <span className="tabular-nums text-foreground">{t}</span>
+                            <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
+                              {full ? "Completo" : `${free} libres`}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
@@ -417,29 +548,35 @@ export default function RestaurantDashboard() {
             </div>
           )}
 
-          {/* Últimas reservas por voz */}
+          {/* Actividad del agente */}
           <div className="rounded-2xl border border-border bg-card">
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <h3 className="font-medium text-sm">Últimas por voz</h3>
+              <Activity className="h-4 w-4 text-primary" />
+              <h3 className="font-medium text-sm">Actividad del agente</h3>
             </div>
             <div className="p-3 space-y-2">
-              {voiceItems.length === 0 && (
-                <p className="px-2 py-3 text-xs text-muted-foreground">El asistente aún no ha creado reservas.</p>
+              {activityItems.length === 0 ? (
+                <p className="px-2 py-3 text-xs text-muted-foreground">Sin actividad reciente.</p>
+              ) : (
+                activityItems.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => (r.status === "requires_human" ? openReview(r) : openEdit(r))}
+                    className="w-full text-left rounded-xl border border-border bg-background/30 px-3 py-2 hover:bg-secondary/40 transition"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium truncate">{r.customer_name}</p>
+                      <StatusChip value={r.status} />
+                    </div>
+                    <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="tabular-nums">{r.reservation_date.slice(5)} · {r.reservation_time.slice(0, 5)}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Mic className="h-3 w-3" /> Voz
+                      </span>
+                    </div>
+                  </button>
+                ))
               )}
-              {voiceItems.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() => openEdit(r)}
-                  className="w-full text-left rounded-xl border border-border bg-background/30 px-3 py-2 hover:bg-secondary/50 transition"
-                >
-                  <p className="text-sm font-medium truncate">{r.customer_name}</p>
-                  <div className="mt-0.5 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">{r.reservation_date.slice(5)} · {r.reservation_time.slice(0, 5)}</span>
-                    <StatusChip value={r.status} />
-                  </div>
-                </button>
-              ))}
             </div>
           </div>
         </aside>
