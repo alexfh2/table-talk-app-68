@@ -139,7 +139,6 @@ export function ReservationDrawer({
     availability && !availability.outOfService ? partySize > availability.free : false;
 
   const evaluation = useMemo(() => {
-    if (isEditOrReviewSkip()) return null;
     const avail = availability
       ? {
           outOfService: !!availability.outOfService,
@@ -161,7 +160,6 @@ export function ReservationDrawer({
       avail,
       dayReservations,
     );
-    function isEditOrReviewSkip() { return false; }
   }, [v, availability, agentSettings, dayReservations, initial?.id]);
 
   async function save(extra?: Partial<Reservation>) {
