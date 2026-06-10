@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { listSchedule, getAgentSettings } from "@/lib/queries";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
-import { evaluateReservationRules, appendReviewReasonsToNotes } from "@/lib/reservationRules";
+import { evaluateReservationRules, appendReviewReasonsToNotes, parseReviewReasonsFromNotes } from "@/lib/reservationRules";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -61,6 +61,7 @@ export function ReservationDrawer({
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
+  const [confirmWithWarnings, setConfirmWithWarnings] = useState(false);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -217,13 +218,39 @@ export function ReservationDrawer({
 
   const isReview = mode === "review";
   const isEdit = mode === "edit" && !!initial;
-  const title = isReview ? "Revisar reserva creada por voz" : isEdit ? "Editar reserva" : "Nueva reserva";
+  const title = isReview ? "Revisar reserva" : isEdit ? "Editar reserva" : "Nueva reserva";
   const editSubtitle = isEdit
     ? `${(initial?.customer_name ?? "Reserva").trim()} · ${initial?.party_size ?? v.party_size ?? 0} ${
         (initial?.party_size ?? 0) === 1 ? "persona" : "personas"
       } · ${(initial?.reservation_time ?? "").slice(0, 5)}`
     : "";
-  const subtitle = isReview ? "Pendiente de confirmación" : isEdit ? editSubtitle : "Reserva manual";
+  const reviewChannel = (v.channel as string) || (initial?.channel as string) || "manual";
+  const reviewSubtitle =
+    reviewChannel === "future_voice" ? "Creada por voz" :
+    reviewChannel === "whatsapp" ? "WhatsApp" :
+    reviewChannel === "external_calendar" ? "Calendario externo" :
+    "Reserva manual";
+  const subtitle = isReview ? reviewSubtitle : isEdit ? editSubtitle : "Reserva manual";
+
+  // Aggregate review reasons: live evaluation + persisted notes
+  const persistedReasons = useMemo(
+    () => parseReviewReasonsFromNotes(v.internal_notes),
+    [v.internal_notes],
+  );
+  const allReviewReasons = useMemo(() => {
+    const set = new Set<string>();
+    (evaluation?.reviewReasons ?? []).forEach((r) => set.add(r));
+    // Only show persisted reasons that are still relevant — keep them if we can't infer otherwise
+    if (!evaluation || evaluation.reviewReasons.length === 0) {
+      persistedReasons.forEach((r) => set.add(r));
+    } else {
+      persistedReasons.forEach((r) => set.add(r));
+    }
+    if (reviewChannel === "future_voice" && !set.has("Creada por voz.")) {
+      // soft note for voice provenance
+    }
+    return Array.from(set);
+  }, [evaluation, persistedReasons, reviewChannel]);
 
   const todayISO = new Date().toISOString().slice(0, 10);
   const nowHHMM = new Date().toTimeString().slice(0, 5);
