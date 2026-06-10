@@ -383,16 +383,27 @@ export function ReservationDrawer({
             <div className="space-y-1.5">
               <Label>Zona o mesa</Label>
               <Select value={v.table_id ?? "none"} onValueChange={(x) => setV({ ...v, table_id: x === "none" ? null : x })}>
-                <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
+                <SelectTrigger>
+                  <span className="truncate">
+                    {v.table_id && v.table_id !== "none"
+                      ? (() => {
+                          const table = tables.find((t) => t.id === v.table_id);
+                          if (!table) return "Sin asignar";
+                          const zone = zones.find((z) => z.id === table.zone_id);
+                          return zone ? `${table.label} · ${zone.name}` : table.label;
+                        })()
+                      : "Sin asignar"}
+                  </span>
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Sin asignar</SelectItem>
-                  {zones.map(z => {
-                    const zt = tables.filter(t => t.zone_id === z.id && t.is_active);
+                  {zones.map((z) => {
+                    const zt = tables.filter((t) => t.zone_id === z.id && t.is_active);
                     if (zt.length === 0) return null;
                     return (
                       <div key={z.id}>
                         <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{z.name}</div>
-                        {zt.map(t => (
+                        {zt.map((t) => (
                           <SelectItem key={t.id} value={t.id}>{t.label} · {t.min_capacity}-{t.max_capacity} personas</SelectItem>
                         ))}
                       </div>
@@ -400,6 +411,20 @@ export function ReservationDrawer({
                   })}
                 </SelectContent>
               </Select>
+              {isEdit && v.reservation_date === todayISO && (v.status === "confirmed" || v.status === "pending") && !v.table_id && (() => {
+                const now = new Date();
+                const [h, m] = (v.reservation_time ?? "00:00").slice(0, 5).split(":").map(Number);
+                const resTime = new Date();
+                resTime.setHours(h, m, 0, 0);
+                const diffMin = (resTime.getTime() - now.getTime()) / 60000;
+                if (diffMin <= 0 || diffMin > 60) return null;
+                return (
+                  <p className="text-xs text-warning-foreground flex items-start gap-1.5 mt-1">
+                    <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>Esta reserva está próxima y todavía no tiene mesa asignada.</span>
+                  </p>
+                );
+              })()}
             </div>
           </section>
 
