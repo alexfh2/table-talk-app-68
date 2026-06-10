@@ -237,8 +237,8 @@ export default function RestaurantReservations() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4 mb-3 border-border bg-card">
-        <div className="grid gap-3 md:grid-cols-12 md:items-end">
+      <Card className="p-3 mb-2 border-border bg-card">
+        <div className="grid gap-2.5 md:grid-cols-12 md:items-end">
           <div className="md:col-span-4">
             <Label className="text-xs text-muted-foreground">Buscar</Label>
             <div className="relative mt-1">
