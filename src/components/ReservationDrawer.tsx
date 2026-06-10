@@ -42,7 +42,7 @@ const CHANNEL_LABEL: Record<string, string> = {
 export type DrawerMode = "create" | "edit" | "review";
 
 export function ReservationDrawer({
-  open, onOpenChange, restaurantId, initial, mode, onSaved,
+  open, onOpenChange, restaurantId, initial, mode, onSaved, createDefaults,
 }: {
   open: boolean;
   onOpenChange: (b: boolean) => void;
@@ -50,6 +50,7 @@ export function ReservationDrawer({
   initial?: Reservation | null;
   mode: DrawerMode;
   onSaved: () => void;
+  createDefaults?: Partial<Reservation>;
 }) {
   const [v, setV] = useState<Partial<Reservation>>({});
   const [saving, setSaving] = useState(false);
@@ -84,9 +85,10 @@ export function ReservationDrawer({
       status: "confirmed" as ReservationStatus,
       channel: "manual" as ReservationChannel,
       customer_notes: "", internal_notes: "", table_id: null,
+      ...(createDefaults ?? {}),
     });
     setStatusManuallyChanged(false);
-  }, [initial, open]);
+  }, [initial, open, createDefaults]);
 
   // Load same-day reservations to compute availability
   useEffect(() => {

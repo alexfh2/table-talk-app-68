@@ -7,6 +7,8 @@ import {
   Users,
   Pencil,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Phone,
   Mic,
   Hand,
@@ -62,9 +64,30 @@ function StatusChip({ value }: { value: string }) {
   );
 }
 
-function formatHeaderDate(d: Date) {
-  const s = d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
-  return "Hoy, " + s.charAt(0).toUpperCase() + s.slice(1).replace(",", "");
+function isoOf(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function fromISO(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+function addDays(d: Date, n: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function formatHeaderDate(selected: Date, todayISO: string) {
+  const s = selected.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  const cap = s.charAt(0).toUpperCase() + s.slice(1).replace(",", "");
+  const selISO = isoOf(selected);
+  const diff = Math.round((fromISO(selISO).getTime() - fromISO(todayISO).getTime()) / 86_400_000);
+  if (diff === 0) return `Hoy, ${cap}`;
+  if (diff === 1) return `Mañana, ${cap}`;
+  if (diff === -1) return `Ayer, ${cap}`;
+  return cap;
 }
 
 function buildSlotList(svc: ScheduleRow | null) {
@@ -101,6 +124,7 @@ export default function RestaurantDashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
   const [drawerInitial, setDrawerInitial] = useState<Reservation | null>(null);
+  const [createDefaults, setCreateDefaults] = useState<Partial<Reservation> | undefined>(undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
 
@@ -126,20 +150,22 @@ export default function RestaurantDashboard() {
 
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [rid]);
 
-  const today = useMemo(() => new Date(), []);
-  const todayISO = today.toISOString().slice(0, 10);
-  const dow = today.getDay();
+  const actualToday = useMemo(() => new Date(), []);
+  const todayISO = isoOf(actualToday);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
+  const selectedISO = isoOf(selectedDate);
+  const isViewingToday = selectedISO === todayISO;
 
   const todayRes = useMemo(
     () => res
-      .filter((r) => r.reservation_date === todayISO && r.status !== "cancelled")
+      .filter((r) => r.reservation_date === selectedISO && r.status !== "cancelled")
       .sort((a, b) => a.reservation_time.localeCompare(b.reservation_time)),
-    [res, todayISO],
+    [res, selectedISO],
   );
 
   const todaySchedule = useMemo(
-    () => effectiveDay(scheduleCtx, todayISO).services,
-    [scheduleCtx, todayISO],
+    () => effectiveDay(scheduleCtx, selectedISO).services,
+    [scheduleCtx, selectedISO],
   );
   const lunchSvc = todaySchedule.find((s) => s.service_period === "lunch") ?? null;
   const dinnerSvc = todaySchedule.find((s) => s.service_period === "dinner") ?? null;
@@ -187,8 +213,14 @@ export default function RestaurantDashboard() {
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 6);
 
-  function openCreate() {
-    setDrawerMode("create"); setDrawerInitial(null); setDrawerOpen(true);
+  function openCreate(time?: string) {
+    setDrawerMode("create");
+    setDrawerInitial(null);
+    setCreateDefaults({
+      reservation_date: selectedISO,
+      ...(time ? { reservation_time: `${time}:00` } : {}),
+    });
+    setDrawerOpen(true);
   }
   function openEdit(r: Reservation) {
     setDrawerMode("edit"); setDrawerInitial(r); setDrawerOpen(true);
@@ -230,6 +262,7 @@ export default function RestaurantDashboard() {
 
   function canSeat(r: Reservation) {
     if (r.status === "requires_human" || r.status === "cancelled" || r.status === "no_show") return false;
+    if (!isViewingToday) return false;
     const isToday = r.reservation_date === todayISO;
     if (!isToday) return false;
     const [h, m] = r.reservation_time.split(":").map(Number);
@@ -432,19 +465,22 @@ export default function RestaurantDashboard() {
             const full = free === 0;
             const tight = free > 0 && free <= 4;
             return (
-              <span
+              <button
                 key={t}
+                type="button"
+                disabled={full}
+                onClick={() => !full && openCreate(t)}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px] tabular-nums",
-                  full && "border-terracotta/40 bg-terracotta/10 text-terracotta",
-                  tight && "border-warning/40 bg-warning/15 text-foreground",
-                  !full && !tight && "border-border bg-secondary/30 text-muted-foreground",
+                  "rounded-full border px-2.5 py-1 text-[11px] tabular-nums transition-colors",
+                  full && "border-terracotta/40 bg-terracotta/10 text-terracotta cursor-not-allowed",
+                  tight && "border-warning/40 bg-warning/15 text-foreground hover:bg-warning/25",
+                  !full && !tight && "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                 )}
               >
                 <span className="text-foreground/80 font-medium">{t}</span>
                 <span className="mx-1.5 opacity-50">·</span>
                 {full ? "Completo" : `${free} libres`}
-              </span>
+              </button>
             );
           })}
         </div>
@@ -499,8 +535,38 @@ export default function RestaurantDashboard() {
           {/* Header */}
           <header className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center rounded-full border border-border bg-secondary/30">
+                  <button
+                    type="button"
+                    aria-label="Día anterior"
+                    onClick={() => setSelectedDate((d) => addDays(d, -1))}
+                    className="px-2 py-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Día siguiente"
+                    onClick={() => setSelectedDate((d) => addDays(d, 1))}
+                    className="px-2 py-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+                {!isViewingToday && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 rounded-full px-3 text-xs"
+                    onClick={() => setSelectedDate(new Date())}
+                  >
+                    Volver a hoy
+                  </Button>
+                )}
+              </div>
               <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
-                {formatHeaderDate(today)}
+                {formatHeaderDate(selectedDate, todayISO)}
               </h1>
               <div className="flex flex-wrap items-center gap-3">
                 <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
@@ -526,7 +592,7 @@ export default function RestaurantDashboard() {
                 </span>
               </div>
             </div>
-            <Button onClick={openCreate} className="rounded-full px-5 shadow-none">
+            <Button onClick={() => openCreate()} className="rounded-full px-5 shadow-none">
               <Plus className="h-4 w-4 mr-1.5" /> Nueva reserva
             </Button>
           </header>
@@ -543,7 +609,7 @@ export default function RestaurantDashboard() {
               <div className="flex items-baseline gap-2 ml-auto">
                 {reviewCount === 0 ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Hoy revisado
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {isViewingToday ? "Hoy revisado" : "Día revisado"}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-terracotta">
@@ -594,7 +660,7 @@ export default function RestaurantDashboard() {
                 <AlertCircle className="h-4 w-4 text-terracotta" />
               )}
               <h3 className="font-medium text-sm">
-                {reviewItems.length === 0 ? "Hoy revisado" : "Necesita revisión"}
+                {reviewItems.length === 0 ? (isViewingToday ? "Hoy revisado" : "Día revisado") : "Necesita revisión"}
               </h3>
               {reviewItems.length > 0 && (
                 <span className="ml-auto text-xs text-muted-foreground">{reviewItems.length}</span>
@@ -603,14 +669,14 @@ export default function RestaurantDashboard() {
             <div className="p-3 space-y-2">
               {reviewItems.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">
-                  No hay reservas de hoy pendientes de comprobar.
+                  No hay reservas del día pendientes de comprobar.
                 </p>
               ) : (
                 <>
                   <p className="px-2 pt-1 pb-1 text-xs text-muted-foreground">
                     {reviewItems.length === 1
-                      ? "1 reserva de hoy necesita confirmación."
-                      : `${reviewItems.length} reservas de hoy necesitan confirmación.`}
+                      ? "1 reserva del día necesita confirmación."
+                      : `${reviewItems.length} reservas del día necesitan confirmación.`}
                   </p>
                   {reviewItems.map((r) => (
                     <div key={r.id} className="rounded-xl border border-terracotta/30 bg-terracotta/5 px-3 py-2.5">
@@ -660,12 +726,21 @@ export default function RestaurantDashboard() {
                           const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
                           const full = free === 0;
                           return (
-                            <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
+                            <button
+                              key={t}
+                              type="button"
+                              disabled={full}
+                              onClick={() => !full && openCreate(t)}
+                              className={cn(
+                                "w-full flex items-center justify-between px-2 py-1.5 text-sm rounded-lg transition-colors",
+                                full ? "cursor-not-allowed" : "hover:bg-secondary/40",
+                              )}
+                            >
                               <span className="tabular-nums text-foreground">{t}</span>
                               <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
                                 {full ? "Completo" : `${free} libres`}
                               </span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -727,6 +802,7 @@ export default function RestaurantDashboard() {
         initial={drawerInitial}
         mode={drawerMode}
         onSaved={reload}
+        createDefaults={createDefaults}
       />
     </AppShell>
   );
