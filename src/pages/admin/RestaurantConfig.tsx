@@ -9,6 +9,7 @@ import { RestaurantForm, RestaurantFormValues } from "@/components/RestaurantFor
 import { SchedulePanel } from "@/components/restaurant-settings/SchedulePanel";
 import { FaqsPanel } from "@/components/restaurant-settings/FaqsPanel";
 import { TablesPanel } from "@/components/restaurant-settings/TablesPanel";
+import { ConfirmationRulesPanel } from "@/components/restaurant-settings/ConfirmationRulesPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ export default function RestaurantConfig() {
           <TabsTrigger value="calendar">Calendario</TabsTrigger>
           <TabsTrigger value="schedule">Horarios y capacidad</TabsTrigger>
           <TabsTrigger value="tables">Mesas</TabsTrigger>
+          <TabsTrigger value="rules">Reglas de confirmación</TabsTrigger>
           <TabsTrigger value="reservations">Reservas</TabsTrigger>
           <TabsTrigger value="faqs">FAQs</TabsTrigger>
           <TabsTrigger value="agent">Tono del agente</TabsTrigger>
@@ -53,6 +55,7 @@ export default function RestaurantConfig() {
         <TabsContent value="calendar"><Card><CardContent className="p-6 text-sm text-muted-foreground">Tipo de calendario actual: <b className="capitalize text-foreground">{r.calendar_type}</b>. Edítalo en la pestaña “Datos básicos”.</CardContent></Card></TabsContent>
         <TabsContent value="schedule"><SchedulePanel restaurantId={r.id} /></TabsContent>
         <TabsContent value="tables"><TablesPanel restaurantId={r.id} /></TabsContent>
+        <TabsContent value="rules"><ConfirmationRulesPanel restaurantId={r.id} /></TabsContent>
         <TabsContent value="reservations"><Card><CardContent className="p-6 text-sm text-muted-foreground">La gestión completa de reservas vive en el panel del restaurante (<Link to="/restaurant/reservations" className="underline">/restaurant/reservations</Link>). Inicia sesión como Restaurant Admin del local para CRUD completo.</CardContent></Card></TabsContent>
         <TabsContent value="faqs"><FaqsPanel restaurantId={r.id} /></TabsContent>
         <TabsContent value="agent"><Card><CardContent className="p-6 text-sm text-muted-foreground">Configuración disponible también en la sección de Restaurant Admin → Configuración → Tono del agente.</CardContent></Card></TabsContent>
