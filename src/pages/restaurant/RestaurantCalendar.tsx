@@ -203,7 +203,7 @@ export default function RestaurantCalendar() {
       {view === "week" ? (
         <WeekView
           summaries={weekSummaries}
-          onPickDay={(d) => { setDate(d); setView("day"); }}
+          onPickDay={(d) => { navigate(`/restaurant?date=${format(d, "yyyy-MM-dd")}`); }}
         />
       ) : (
         <DayView
