@@ -252,12 +252,12 @@ export function ReservationDrawer({
 
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
-  const canSubmit =
-    nameValid &&
-    partySize >= 1 &&
-    !!v.reservation_date &&
-    !!v.reservation_time &&
-    (initial ? true : !overCapacity);
+  const isCreate = !initial && mode === "create";
+  const canSubmit = isCreate
+    ? !!evaluation?.canSave
+    : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
+  const createButtonLabel =
+    evaluation?.suggestedStatus === "requires_human" ? "Guardar para revisar" : "Guardar reserva";
 
   function bumpParty(delta: number) {
     const next = Math.min(30, Math.max(1, partySize + delta));
