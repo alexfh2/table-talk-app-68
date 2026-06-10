@@ -182,7 +182,7 @@ export default function RestaurantReservations() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4 mb-4 border-stone/40 bg-card">
+      <Card className="p-4 mb-4 border-border bg-card">
         <div className="grid gap-3 md:grid-cols-12 md:items-end">
           <div className="md:col-span-5">
             <Label className="text-xs text-muted-foreground">Buscar</Label>
@@ -263,7 +263,7 @@ export default function RestaurantReservations() {
                 "inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                 chip === c.id
                   ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-background text-foreground border-stone/50 hover:bg-muted",
+                  : "bg-background text-foreground border-border hover:bg-muted",
               )}
             >
               {c.label}
@@ -289,7 +289,7 @@ export default function RestaurantReservations() {
 
       {/* Empty states */}
       {filtered.length === 0 ? (
-        <Card className="p-10 text-center border-stone/40">
+        <Card className="p-10 text-center border-border">
           {items.length === 0 ? (
             <>
               <h3 className="text-base font-medium text-foreground">Todavía no hay reservas</h3>
@@ -312,7 +312,7 @@ export default function RestaurantReservations() {
       ) : (
         <>
           {/* Desktop / tablet table */}
-          <Card className="hidden md:block border-stone/40">
+          <Card className="hidden md:block border-border">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -412,7 +412,7 @@ export default function RestaurantReservations() {
                 : [];
               const isReview = r.status === "requires_human";
               return (
-                <Card key={r.id} className="p-4 border-stone/40">
+                <Card key={r.id} className="p-4 border-border">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium text-foreground">
