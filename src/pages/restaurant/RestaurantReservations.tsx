@@ -16,14 +16,14 @@ import {
   type RestaurantTable,
   type Zone,
 } from "@/lib/types";
-import { Plus, MoreHorizontal, Ban, UserX, Search, CalendarDays } from "lucide-react";
+import { Plus, MoreHorizontal, Ban, UserX, Search, CalendarDays, Eye } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { format, addDays, startOfWeek, endOfWeek, parseISO } from "date-fns";
+import { format, addDays, startOfWeek, endOfWeek, parseISO, isSameDay, isTomorrow } from "date-fns";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +44,15 @@ const CHANNEL_SHORT: Record<ReservationChannel, string> = {
   external_calendar: "Externo",
 };
 
+const DATE_FILTER_LABEL: Record<DateFilter, string> = {
+  all: "Cualquier fecha",
+  today: "Hoy",
+  tomorrow: "Mañana",
+  this_week: "Esta semana",
+  upcoming: "Próximas",
+  custom: "Rango personalizado",
+};
+
 const QUICK_CHIPS: { id: QuickChip; label: string }[] = [
   { id: "all", label: "Todas" },
   { id: "upcoming", label: "Próximas" },
@@ -55,6 +64,35 @@ const QUICK_CHIPS: { id: QuickChip; label: string }[] = [
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function isUpcoming(dateStr: string) {
+  const d = parseISO(dateStr);
+  const today = new Date();
+  return isSameDay(d, today) || isTomorrow(d);
+}
+
+function primaryActionLabel(status: ReservationStatus) {
+  if (status === "requires_human") return "Revisar";
+  if (status === "cancelled" || status === "no_show") return "Ver";
+  return "Editar";
+}
+
+function primaryActionVariant(status: ReservationStatus): "default" | "outline" | "ghost" {
+  if (status === "requires_human") return "default";
+  if (status === "cancelled" || status === "no_show") return "ghost";
+  return "outline";
+}
+
+function reviewReasonText(r: Reservation): string {
+  if (r.status !== "requires_human") return "";
+  const reasons = parseReviewReasonsFromNotes(r.internal_notes);
+  if (reasons.length > 0) return reasons[0].replace(/\.$/, "");
+  if (r.internal_notes) {
+    const first = r.internal_notes.split("\n")[0]?.trim();
+    if (first && first.length < 120) return first;
+  }
+  return "Revisar datos de la reserva";
 }
 
 export default function RestaurantReservations() {
@@ -85,12 +123,12 @@ export default function RestaurantReservations() {
   }
   useEffect(reload, [rid]);
 
-  function tableInfo(id: string | null): string {
-    if (!id) return "Sin asignar";
+  function tableInfo(id: string | null): { label: string; zone?: string } | null {
+    if (!id) return null;
     const t = tables.find((x) => x.id === id);
-    if (!t) return "Sin asignar";
+    if (!t) return null;
     const z = zones.find((z) => z.id === t.zone_id);
-    return z ? `${t.label} · ${z.name}` : t.label;
+    return z ? { label: t.label, zone: z.name } : { label: t.label };
   }
 
   const dateRange = useMemo(() => {
@@ -112,20 +150,15 @@ export default function RestaurantReservations() {
     const today = todayISO();
     const q = query.trim().toLowerCase();
     return items.filter((r) => {
-      // chip
       if (chip === "upcoming" && r.reservation_date < today) return false;
       if (chip === "today" && r.reservation_date !== today) return false;
       if (chip === "requires_human" && r.status !== "requires_human") return false;
       if (chip === "pending" && r.status !== "pending") return false;
       if (chip === "cancelled" && r.status !== "cancelled") return false;
-      // status select
       if (status !== "all" && r.status !== status) return false;
-      // channel
       if (channel !== "all" && r.channel !== channel) return false;
-      // date range
       if (dateRange.from && r.reservation_date < dateRange.from) return false;
       if (dateRange.to && r.reservation_date > dateRange.to) return false;
-      // query
       if (q) {
         const hay = `${r.customer_name ?? ""} ${r.customer_phone ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
@@ -168,10 +201,10 @@ export default function RestaurantReservations() {
   return (
     <AppShell variant="restaurant" title="Reservas">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Reservas</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+          <p className="text-sm text-muted-foreground mt-0.5">
             Busca, filtra y gestiona las reservas del restaurante.
           </p>
         </div>
@@ -182,9 +215,9 @@ export default function RestaurantReservations() {
       </div>
 
       {/* Filters */}
-      <Card className="p-4 mb-4 border-border bg-card">
+      <Card className="p-4 mb-3 border-border bg-card">
         <div className="grid gap-3 md:grid-cols-12 md:items-end">
-          <div className="md:col-span-5">
+          <div className="md:col-span-4">
             <Label className="text-xs text-muted-foreground">Buscar</Label>
             <div className="relative mt-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -221,12 +254,14 @@ export default function RestaurantReservations() {
               </SelectContent>
             </Select>
           </div>
-          <div className="md:col-span-2">
+          <div className="md:col-span-3">
             <Label className="text-xs text-muted-foreground">Fecha</Label>
             <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilter)}>
-              <SelectTrigger className="mt-1">
-                <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
-                <SelectValue />
+              <SelectTrigger className="mt-1 whitespace-nowrap [&>span]:line-clamp-none">
+                <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground shrink-0" />
+                <SelectValue placeholder={DATE_FILTER_LABEL.all}>
+                  {DATE_FILTER_LABEL[dateFilter]}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Cualquier fecha</SelectItem>
@@ -253,7 +288,7 @@ export default function RestaurantReservations() {
         </div>
 
         {/* Quick chips */}
-        <div className="flex flex-wrap gap-2 mt-4">
+        <div className="flex flex-wrap gap-2 mt-3">
           {QUICK_CHIPS.map((c) => (
             <button
               key={c.id}
@@ -282,9 +317,11 @@ export default function RestaurantReservations() {
       </Card>
 
       {/* Result count */}
-      <div className="text-xs text-muted-foreground mb-2 px-1">
-        {filtered.length} {filtered.length === 1 ? "reserva encontrada" : "reservas encontradas"}
-        {hasActiveFilters ? " con estos filtros" : ""}
+      <div className="flex items-center gap-2 mb-2 px-1">
+        <span className="text-xs text-muted-foreground">
+          {filtered.length} {filtered.length === 1 ? "reserva encontrada" : "reservas encontradas"}
+          {hasActiveFilters ? " con estos filtros" : ""}
+        </span>
       </div>
 
       {/* Empty states */}
@@ -316,71 +353,91 @@ export default function RestaurantReservations() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Reserva</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Personas</TableHead>
-                    <TableHead>Mesa / zona</TableHead>
-                    <TableHead>Estado</TableHead>
-                    <TableHead>Origen</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="h-9 px-3 py-2 text-xs">Reserva</TableHead>
+                    <TableHead className="h-9 px-3 py-2 text-xs">Cliente</TableHead>
+                    <TableHead className="h-9 px-3 py-2 text-xs">Personas</TableHead>
+                    <TableHead className="h-9 px-3 py-2 text-xs">Mesa / zona</TableHead>
+                    <TableHead className="h-9 px-3 py-2 text-xs">Estado</TableHead>
+                    <TableHead className="h-9 px-3 py-2 text-xs">Origen</TableHead>
+                    <TableHead className="h-9 px-3 py-2 text-xs text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map((r) => {
-                    const reviewReasons = r.status === "requires_human"
-                      ? parseReviewReasonsFromNotes(r.internal_notes)
-                      : [];
                     const isReview = r.status === "requires_human";
+                    const info = tableInfo(r.table_id);
+                    const upcomingNoTable = isUpcoming(r.reservation_date) && !info;
+                    const reason = isReview ? reviewReasonText(r) : "";
+                    const actionLabel = primaryActionLabel(r.status);
+                    const actionVariant = primaryActionVariant(r.status);
                     return (
-                      <TableRow key={r.id}>
-                        <TableCell className="align-top">
-                          <div className="font-medium text-foreground">
+                      <TableRow
+                        key={r.id}
+                        className={cn(
+                          "border-b",
+                          isReview && "border-l-2 border-l-terracotta bg-terracotta/[0.03]",
+                        )}
+                      >
+                        <TableCell className="py-2.5 px-3 align-middle">
+                          <div className="font-medium text-sm text-foreground">
                             {format(parseISO(r.reservation_date), "dd/MM/yyyy")}
                           </div>
                           <div className="text-xs text-muted-foreground">{r.reservation_time.slice(0, 5)}</div>
                         </TableCell>
-                        <TableCell className="align-top">
-                          <div className="font-medium text-foreground">{r.customer_name}</div>
-                          <div className={cn("text-xs", r.customer_phone ? "text-muted-foreground" : "text-muted-foreground/70 italic")}>
+                        <TableCell className="py-2.5 px-3 align-middle">
+                          <div className="font-medium text-sm text-foreground">{r.customer_name}</div>
+                          <div className={cn("text-xs", r.customer_phone ? "text-muted-foreground" : "text-muted-foreground/60 italic")}>
                             {r.customer_phone ?? "Sin teléfono"}
                           </div>
                           {r.customer_notes && (
-                            <div className="text-xs text-muted-foreground mt-1 max-w-[220px] truncate" title={r.customer_notes}>
+                            <div className="text-xs text-muted-foreground mt-0.5 max-w-[220px] truncate" title={r.customer_notes}>
                               {r.customer_notes}
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="align-top">{r.party_size}</TableCell>
-                        <TableCell className="align-top text-sm">{tableInfo(r.table_id)}</TableCell>
-                        <TableCell className="align-top">
+                        <TableCell className="py-2.5 px-3 align-middle text-sm text-foreground">{r.party_size}</TableCell>
+                        <TableCell className="py-2.5 px-3 align-middle">
+                          {info ? (
+                            <span className="text-sm text-foreground">
+                              {info.zone ? `${info.label} · ${info.zone}` : info.label}
+                            </span>
+                          ) : (
+                            <span className={cn("text-xs", upcomingNoTable ? "text-warning font-medium" : "text-muted-foreground/60 italic")}>
+                              {upcomingNoTable ? "Sin asignar" : "Sin asignar"}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2.5 px-3 align-middle">
                           <StatusBadge kind="reservation" value={r.status} />
-                          {isReview && reviewReasons.length > 0 && (
-                            <div className="text-xs text-terracotta mt-1 max-w-[200px]">
-                              {reviewReasons[0].replace(/\.$/, "")}
+                          {isReview && reason && (
+                            <div className="text-xs text-terracotta mt-1 max-w-[220px] leading-snug">
+                              {reason}
                             </div>
                           )}
                         </TableCell>
-                        <TableCell className="align-top text-xs text-muted-foreground">
+                        <TableCell className="py-2.5 px-3 align-middle text-xs text-muted-foreground">
                           {CHANNEL_SHORT[r.channel]}
                         </TableCell>
-                        <TableCell className="align-top text-right whitespace-nowrap">
+                        <TableCell className="py-2.5 px-3 align-middle text-right whitespace-nowrap">
                           <Button
                             size="sm"
-                            variant={isReview ? "default" : "outline"}
+                            variant={actionVariant}
                             onClick={() => openRow(r)}
+                            className={cn(actionVariant === "ghost" && "text-muted-foreground hover:text-foreground")}
                           >
-                            {isReview ? "Revisar" : "Editar"}
+                            {actionLabel}
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button size="icon" variant="ghost" className="ml-1">
+                              <Button size="icon" variant="ghost" className="ml-1 h-8 w-8">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onClick={() => openRow(r)}>
-                                {isReview ? "Revisar" : "Editar"}
+                                {actionLabel === "Ver" && <Eye className="h-4 w-4 mr-2" />}
+                                {actionLabel}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {r.status !== "cancelled" && (
@@ -407,19 +464,27 @@ export default function RestaurantReservations() {
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
             {filtered.map((r) => {
-              const reviewReasons = r.status === "requires_human"
-                ? parseReviewReasonsFromNotes(r.internal_notes)
-                : [];
               const isReview = r.status === "requires_human";
+              const info = tableInfo(r.table_id);
+              const upcomingNoTable = isUpcoming(r.reservation_date) && !info;
+              const reason = isReview ? reviewReasonText(r) : "";
+              const actionLabel = primaryActionLabel(r.status);
+              const actionVariant = primaryActionVariant(r.status);
               return (
-                <Card key={r.id} className="p-4 border-border">
+                <Card
+                  key={r.id}
+                  className={cn(
+                    "p-4 border-border",
+                    isReview && "border-l-2 border-l-terracotta bg-terracotta/[0.03]",
+                  )}
+                >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <div className="text-sm font-medium text-foreground">
                         {format(parseISO(r.reservation_date), "dd/MM/yyyy")} · {r.reservation_time.slice(0, 5)}
                       </div>
                       <div className="font-medium text-foreground mt-1">{r.customer_name}</div>
-                      <div className={cn("text-xs", r.customer_phone ? "text-muted-foreground" : "text-muted-foreground/70 italic")}>
+                      <div className={cn("text-xs", r.customer_phone ? "text-muted-foreground" : "text-muted-foreground/60 italic")}>
                         {r.customer_phone ?? "Sin teléfono"}
                       </div>
                     </div>
@@ -427,11 +492,18 @@ export default function RestaurantReservations() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-muted-foreground">
                     <div><span className="text-foreground/70">Personas:</span> {r.party_size}</div>
-                    <div><span className="text-foreground/70">Mesa:</span> {tableInfo(r.table_id)}</div>
+                    <div>
+                      <span className="text-foreground/70">Mesa:</span>{" "}
+                      {info ? (info.zone ? `${info.label} · ${info.zone}` : info.label) : (
+                        <span className={upcomingNoTable ? "text-warning font-medium" : "text-muted-foreground/60 italic"}>
+                          Sin asignar
+                        </span>
+                      )}
+                    </div>
                     <div className="col-span-2"><span className="text-foreground/70">Origen:</span> {CHANNEL_SHORT[r.channel]}</div>
                   </div>
-                  {isReview && reviewReasons.length > 0 && (
-                    <div className="text-xs text-terracotta mt-2">{reviewReasons[0].replace(/\.$/, "")}</div>
+                  {isReview && reason && (
+                    <div className="text-xs text-terracotta mt-2 leading-snug">{reason}</div>
                   )}
                   {r.customer_notes && (
                     <div className="text-xs text-muted-foreground mt-2 line-clamp-2">{r.customer_notes}</div>
@@ -454,8 +526,8 @@ export default function RestaurantReservations() {
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button size="sm" variant={isReview ? "default" : "outline"} onClick={() => openRow(r)}>
-                      {isReview ? "Revisar" : "Editar"}
+                    <Button size="sm" variant={actionVariant} onClick={() => openRow(r)}>
+                      {actionLabel}
                     </Button>
                   </div>
                 </Card>
