@@ -540,7 +540,7 @@ export default function RestaurantDashboard() {
                 <AlertCircle className="h-4 w-4 text-terracotta" />
               )}
               <h3 className="font-medium text-sm">
-                {reviewItems.length === 0 ? "Todo revisado" : "Necesita revisión"}
+                {reviewItems.length === 0 ? "Hoy revisado" : "Necesita revisión"}
               </h3>
               {reviewItems.length > 0 && (
                 <span className="ml-auto text-xs text-muted-foreground">{reviewItems.length}</span>
@@ -549,23 +549,23 @@ export default function RestaurantDashboard() {
             <div className="p-3 space-y-2">
               {reviewItems.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">
-                  No hay reservas pendientes de comprobar.
+                  No hay reservas de hoy pendientes de comprobar.
                 </p>
               ) : (
                 <>
                   <p className="px-2 pt-1 pb-1 text-xs text-muted-foreground">
                     {reviewItems.length === 1
-                      ? "1 reserva creada por voz necesita confirmación."
-                      : `${reviewItems.length} reservas creadas por voz necesitan confirmación.`}
+                      ? "1 reserva de hoy necesita confirmación."
+                      : `${reviewItems.length} reservas de hoy necesitan confirmación.`}
                   </p>
                   {reviewItems.map((r) => (
                     <div key={r.id} className="rounded-xl border border-terracotta/30 bg-terracotta/5 px-3 py-2.5">
                       <p className="text-sm font-medium">
                         {r.customer_name}
-                        <span className="text-muted-foreground font-normal"> · {r.party_size} pax · {r.reservation_time.slice(0, 5)}</span>
+                        <span className="text-muted-foreground font-normal"> · {r.party_size} {r.party_size === 1 ? "persona" : "personas"} · {r.reservation_time.slice(0, 5)}</span>
                       </p>
                       <p className="text-xs text-terracotta mt-0.5">
-                        {!r.customer_phone ? "Falta teléfono" : (r.customer_notes ?? "Datos por confirmar")}
+                        {r.internal_notes || (!r.customer_phone ? "Falta teléfono" : "Datos por confirmar")}
                       </p>
                       <Button size="sm" variant="outline" className="mt-2 h-7 rounded-full border-terracotta/40 text-terracotta hover:bg-terracotta/10" onClick={() => openReview(r)}>
                         Revisar
@@ -614,7 +614,7 @@ export default function RestaurantDashboard() {
           <div className="rounded-2xl border border-border bg-card">
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
               <Activity className="h-4 w-4 text-primary" />
-              <h3 className="font-medium text-sm">Actividad del agente</h3>
+              <h3 className="font-medium text-sm">Actividad reciente</h3>
             </div>
             <div className="p-3 space-y-2">
               {activityItems.length === 0 ? (
@@ -628,12 +628,16 @@ export default function RestaurantDashboard() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium truncate">{r.customer_name}</p>
-                      <StatusChip value={r.status} />
+                      {r.channel === "future_voice" && (
+                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                          <Mic className="h-3 w-3" /> Voz
+                        </span>
+                      )}
                     </div>
-                    <div className="mt-0.5 flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="tabular-nums">{r.reservation_date.slice(5)} · {r.reservation_time.slice(0, 5)}</span>
-                      <span className="inline-flex items-center gap-1">
-                        <Mic className="h-3 w-3" /> Voz
+                    <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                      <StatusChip value={r.status} />
+                      <span className="tabular-nums">
+                        Para {r.reservation_date.slice(8, 10)}/{r.reservation_date.slice(5, 7)} · {r.reservation_time.slice(0, 5)}
                       </span>
                     </div>
                   </button>
