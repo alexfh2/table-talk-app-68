@@ -94,6 +94,11 @@ export interface AgentSettings {
   max_party_size_auto: number | null;
   min_notice_hours: number | null;
   max_advance_days: number | null;
+  voice_reservation_policy: "auto_if_no_conflict" | "requires_review";
+  missing_phone_policy: "allow_confirm" | "requires_review";
+  out_of_hours_manual_policy: "block";
+  out_of_hours_voice_policy: "requires_review";
+  slot_almost_full_threshold: number;
 }
 
 export interface NotificationSettings {
