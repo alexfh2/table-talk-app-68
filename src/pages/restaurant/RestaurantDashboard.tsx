@@ -790,6 +790,7 @@ export default function RestaurantDashboard() {
         initial={drawerInitial}
         mode={drawerMode}
         onSaved={reload}
+        createDefaults={createDefaults}
       />
     </AppShell>
   );
