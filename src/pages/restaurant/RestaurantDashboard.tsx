@@ -641,28 +641,35 @@ export default function RestaurantDashboard() {
               {activityItems.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">Sin actividad reciente.</p>
               ) : (
-                activityItems.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => (r.status === "requires_human" ? openReview(r) : openEdit(r))}
-                    className="w-full text-left rounded-xl border border-border bg-background/30 px-3 py-2 hover:bg-secondary/40 transition"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium truncate">{r.customer_name}</p>
-                      {r.channel === "future_voice" && (
-                        <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                          <Mic className="h-3 w-3" /> Voz
+                activityItems.map((r) => {
+                  const isTodayActivity = r.reservation_date === todayISO;
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => (r.status === "requires_human" ? openReview(r) : openEdit(r))}
+                      className="w-full text-left rounded-xl border border-border bg-background/30 px-3 py-2 hover:bg-secondary/40 transition"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium truncate">{r.customer_name}</p>
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                        <StatusChip value={r.status} />
+                        <span className="tabular-nums">
+                          Para {r.reservation_date.slice(8, 10)}/{r.reservation_date.slice(5, 7)} · {r.reservation_time.slice(0, 5)}
                         </span>
-                      )}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-                      <StatusChip value={r.status} />
-                      <span className="tabular-nums">
-                        Para {r.reservation_date.slice(8, 10)}/{r.reservation_date.slice(5, 7)} · {r.reservation_time.slice(0, 5)}
-                      </span>
-                    </div>
-                  </button>
-                ))
+                        {!isTodayActivity && (
+                          <span className="inline-flex items-center rounded-full border border-border bg-secondary/40 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Otro día
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        {r.channel === "future_voice" ? <Mic className="h-3 w-3" /> : <Hand className="h-3 w-3" />}
+                        {r.channel === "future_voice" ? "Voz" : r.channel === "manual" ? "Manual" : r.channel === "whatsapp" ? "WhatsApp" : r.channel === "external_calendar" ? "Calendario externo" : r.channel}
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
