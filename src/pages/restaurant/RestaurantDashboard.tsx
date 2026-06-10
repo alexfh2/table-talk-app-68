@@ -465,19 +465,22 @@ export default function RestaurantDashboard() {
             const full = free === 0;
             const tight = free > 0 && free <= 4;
             return (
-              <span
+              <button
                 key={t}
+                type="button"
+                disabled={full}
+                onClick={() => !full && openCreate(t)}
                 className={cn(
-                  "rounded-full border px-2.5 py-1 text-[11px] tabular-nums",
-                  full && "border-terracotta/40 bg-terracotta/10 text-terracotta",
-                  tight && "border-warning/40 bg-warning/15 text-foreground",
-                  !full && !tight && "border-border bg-secondary/30 text-muted-foreground",
+                  "rounded-full border px-2.5 py-1 text-[11px] tabular-nums transition-colors",
+                  full && "border-terracotta/40 bg-terracotta/10 text-terracotta cursor-not-allowed",
+                  tight && "border-warning/40 bg-warning/15 text-foreground hover:bg-warning/25",
+                  !full && !tight && "border-border bg-secondary/30 text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
                 )}
               >
                 <span className="text-foreground/80 font-medium">{t}</span>
                 <span className="mx-1.5 opacity-50">·</span>
                 {full ? "Completo" : `${free} libres`}
-              </span>
+              </button>
             );
           })}
         </div>
@@ -723,12 +726,21 @@ export default function RestaurantDashboard() {
                           const free = Math.max(0, cap - (occupancy.get(t) ?? 0));
                           const full = free === 0;
                           return (
-                            <div key={t} className="flex items-center justify-between px-2 py-1.5 text-sm">
+                            <button
+                              key={t}
+                              type="button"
+                              disabled={full}
+                              onClick={() => !full && openCreate(t)}
+                              className={cn(
+                                "w-full flex items-center justify-between px-2 py-1.5 text-sm rounded-lg transition-colors",
+                                full ? "cursor-not-allowed" : "hover:bg-secondary/40",
+                              )}
+                            >
                               <span className="tabular-nums text-foreground">{t}</span>
                               <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
                                 {full ? "Completo" : `${free} libres`}
                               </span>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
