@@ -258,6 +258,36 @@ export default function RestaurantDashboard() {
         return n;
       });
     }
+
+    const CHANNEL_LABEL_SHORT: Record<string, string> = {
+      manual: "Manual",
+      whatsapp: "WhatsApp",
+      future_voice: "Voz",
+      external_calendar: "Externo",
+    };
+
+    const table = r.table_id ? tables.find((t) => t.id === r.table_id) : null;
+    const zone = table?.zone_id ? zones.find((z) => z.id === table.zone_id) : null;
+    const channelLabel = CHANNEL_LABEL_SHORT[r.channel] ?? r.channel;
+
+    let assignmentText: string;
+    if (table && zone) {
+      assignmentText = `${table.label} · ${zone.name} · ${channelLabel}`;
+    } else if (table) {
+      assignmentText = `${table.label} · ${channelLabel}`;
+    } else {
+      assignmentText = `Sin asignar · ${channelLabel}`;
+    }
+
+    function isUpcomingUnassigned() {
+      if (r.table_id) return false;
+      const [h, m] = r.reservation_time.split(":").map(Number);
+      const resMins = h * 60 + m;
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const diff = resMins - nowMins;
+      return diff >= 0 && diff <= 60;
+    }
+
     return (
       <div
         className={cn(
@@ -273,11 +303,13 @@ export default function RestaurantDashboard() {
             <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
               <Users className="h-3.5 w-3.5" /> {r.party_size} {r.party_size === 1 ? "persona" : "personas"}
             </span>
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              {r.channel === "future_voice" ? <Mic className="h-3.5 w-3.5" /> : <Hand className="h-3.5 w-3.5" />}
-              {r.channel === "future_voice" ? "Voz" : "Manual"}
-            </span>
           </div>
+          <p className={cn(
+            "text-xs mt-0.5",
+            isUpcomingUnassigned() ? "text-warning-foreground" : "text-muted-foreground"
+          )}>
+            {assignmentText}
+          </p>
           {review && reviewReason && (
             <p className="mt-1 text-xs text-terracotta">
               <AlertCircle className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />
