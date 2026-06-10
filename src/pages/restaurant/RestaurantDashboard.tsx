@@ -7,6 +7,8 @@ import {
   Users,
   Pencil,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Phone,
   Mic,
   Hand,
@@ -62,9 +64,30 @@ function StatusChip({ value }: { value: string }) {
   );
 }
 
-function formatHeaderDate(d: Date) {
-  const s = d.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
-  return "Hoy, " + s.charAt(0).toUpperCase() + s.slice(1).replace(",", "");
+function isoOf(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function fromISO(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+function addDays(d: Date, n: number) {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+function formatHeaderDate(selected: Date, todayISO: string) {
+  const s = selected.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
+  const cap = s.charAt(0).toUpperCase() + s.slice(1).replace(",", "");
+  const selISO = isoOf(selected);
+  const diff = Math.round((fromISO(selISO).getTime() - fromISO(todayISO).getTime()) / 86_400_000);
+  if (diff === 0) return `Hoy, ${cap}`;
+  if (diff === 1) return `Mañana, ${cap}`;
+  if (diff === -1) return `Ayer, ${cap}`;
+  return cap;
 }
 
 function buildSlotList(svc: ScheduleRow | null) {
