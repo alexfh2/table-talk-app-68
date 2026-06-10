@@ -9,7 +9,33 @@ import { supabase } from "@/integrations/supabase/client";
 import { listSchedule } from "@/lib/queries";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow } from "@/lib/types";
 import { toast } from "sonner";
-import { AlertCircle, CheckCircle2, Clock, Minus, Plus, X } from "lucide-react";
+import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pendiente",
+  confirmed: "Confirmada",
+  modified: "Modificada",
+  cancelled: "Cancelada",
+  requires_human: "Requiere revisión",
+  no_show: "No-show",
+};
+
+const CHANNEL_LABEL: Record<string, string> = {
+  manual: "Manual",
+  whatsapp: "WhatsApp",
+  future_voice: "Voz",
+  external_calendar: "Externo",
+};
 
 export type DrawerMode = "create" | "edit" | "review";
 
@@ -30,6 +56,8 @@ export function ReservationDrawer({
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id">[]>([]);
   const [nameTouched, setNameTouched] = useState(false);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmNoShow, setConfirmNoShow] = useState(false);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -145,8 +173,37 @@ export function ReservationDrawer({
   }
 
   const isReview = mode === "review";
-  const title = isReview ? "Revisar reserva creada por voz" : initial ? "Editar reserva" : "Nueva reserva";
-  const subtitle = isReview ? "Pendiente de confirmación" : initial ? "Editar datos" : "Reserva manual";
+  const isEdit = mode === "edit" && !!initial;
+  const title = isReview ? "Revisar reserva creada por voz" : isEdit ? "Editar reserva" : "Nueva reserva";
+  const editSubtitle = isEdit
+    ? `${(initial?.customer_name ?? "Reserva").trim()} · ${initial?.party_size ?? v.party_size ?? 0} ${
+        (initial?.party_size ?? 0) === 1 ? "persona" : "personas"
+      } · ${(initial?.reservation_time ?? "").slice(0, 5)}`
+    : "";
+  const subtitle = isReview ? "Pendiente de confirmación" : isEdit ? editSubtitle : "Reserva manual";
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const nowHHMM = new Date().toTimeString().slice(0, 5);
+  const canMarkNoShow =
+    isEdit &&
+    initial?.reservation_date === todayISO &&
+    (initial?.reservation_time ?? "").slice(0, 5) <= nowHHMM &&
+    initial?.status !== "cancelled" &&
+    initial?.status !== "no_show";
+
+  async function quickStatusChange(status: ReservationStatus, msg: string) {
+    if (!initial?.id) return;
+    setSaving(true);
+    const { error } = await supabase
+      .from("reservations")
+      .update({ status })
+      .eq("id", initial.id);
+    setSaving(false);
+    if (error) return toast.error(error.message);
+    toast.success(msg);
+    onOpenChange(false);
+    onSaved();
+  }
 
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
@@ -185,6 +242,25 @@ export function ReservationDrawer({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
+
+        {isEdit && initial && (
+          <div className="mb-5 rounded-[14px] border border-border bg-secondary/40 px-4 py-3">
+            <p className="font-medium text-foreground">{initial.customer_name}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {new Date((initial.reservation_date as string) + "T00:00:00").toLocaleDateString("es-ES")} ·{" "}
+              {(initial.reservation_time ?? "").slice(0, 5)} · {initial.party_size}{" "}
+              {initial.party_size === 1 ? "persona" : "personas"}
+            </p>
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-foreground">
+                {STATUS_LABEL[initial.status as string] ?? initial.status}
+              </span>
+              <span className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                {CHANNEL_LABEL[initial.channel as string] ?? initial.channel}
+              </span>
+            </div>
+          </div>
+        )}
 
         {isReview && (
           <div className="mb-5 rounded-2xl border border-border bg-secondary/40 p-4 space-y-1.5 text-sm">
@@ -351,6 +427,57 @@ export function ReservationDrawer({
             </div>
           </section>
         </div>
+
+          {isEdit && (
+            <>
+              <section className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Estado de la reserva
+                </h3>
+                <Select
+                  value={(v.status as string) ?? "confirmed"}
+                  onValueChange={(x) => setV({ ...v, status: x as ReservationStatus })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["pending", "confirmed", "modified", "cancelled", "requires_human", "no_show"] as const).map((s) => (
+                      <SelectItem key={s} value={s}>{STATUS_LABEL[s]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Origen: <span className="text-foreground font-medium">{CHANNEL_LABEL[(v.channel as string) ?? "manual"]}</span>
+                </p>
+              </section>
+
+              <section className="space-y-2 pt-2 border-t border-border/60">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Acciones de reserva
+                </h3>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmCancel(true)}
+                    disabled={initial?.status === "cancelled"}
+                    className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-terracotta hover:bg-terracotta/10 disabled:opacity-40 transition-colors"
+                  >
+                    <Ban className="h-3.5 w-3.5" /> Cancelar reserva
+                  </button>
+                  {canMarkNoShow && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmNoShow(true)}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <UserX className="h-3.5 w-3.5" /> Marcar no-show
+                    </button>
+                  )}
+                </div>
+              </section>
+            </>
+          )}
         </div>
 
         {/* Compact summary */}
@@ -378,11 +505,45 @@ export function ReservationDrawer({
             </>
           ) : (
             <Button onClick={() => save()} disabled={saving || !canSubmit}>
-              {saving ? "Guardando…" : "Guardar reserva"}
+              {saving ? "Guardando…" : isEdit ? "Guardar cambios" : "Guardar reserva"}
             </Button>
           )}
         </div>
       </SheetContent>
+
+      <AlertDialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cancelar esta reserva?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La reserva quedará marcada como cancelada y no contará para la ocupación.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction onClick={() => quickStatusChange("cancelled" as ReservationStatus, "Reserva cancelada.")}>
+              Sí, cancelar reserva
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmNoShow} onOpenChange={setConfirmNoShow}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Marcar como no-show?</AlertDialogTitle>
+            <AlertDialogDescription>
+              La reserva quedará marcada como no-show y no contará para la ocupación.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction onClick={() => quickStatusChange("no_show" as ReservationStatus, "Reserva marcada como no-show.")}>
+              Sí, marcar no-show
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sheet>
   );
 }
