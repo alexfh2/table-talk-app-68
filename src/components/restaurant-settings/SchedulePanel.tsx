@@ -185,16 +185,18 @@ export function SchedulePanel({ restaurantId }: { restaurantId: string }) {
     );
   }
 
+  const DAY_ORDER = [1, 2, 3, 4, 5, 6, 0]; // Lunes a Domingo
+
   return (
     <div className="space-y-4">
-      {DAY_NAMES.map((name, idx) => (
-        <Card key={idx}>
+      {DAY_ORDER.map((dayIdx) => (
+        <Card key={dayIdx}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">{name}</CardTitle>
+            <CardTitle className="text-base">{DAY_NAMES[dayIdx]}</CardTitle>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {renderPeriodSection(idx, "lunch")}
-            {renderPeriodSection(idx, "dinner")}
+            {renderPeriodSection(dayIdx, "lunch")}
+            {renderPeriodSection(dayIdx, "dinner")}
           </CardContent>
         </Card>
       ))}
