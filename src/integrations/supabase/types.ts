@@ -27,9 +27,14 @@ export type Database = {
           max_advance_days: number | null
           max_party_size_auto: number | null
           min_notice_hours: number | null
+          missing_phone_policy: string
+          out_of_hours_manual_policy: string
+          out_of_hours_voice_policy: string
           restaurant_id: string
+          slot_almost_full_threshold: number
           tone_style: string | null
           updated_at: string
+          voice_reservation_policy: string
           welcome_message: string | null
         }
         Insert: {
@@ -44,9 +49,14 @@ export type Database = {
           max_advance_days?: number | null
           max_party_size_auto?: number | null
           min_notice_hours?: number | null
+          missing_phone_policy?: string
+          out_of_hours_manual_policy?: string
+          out_of_hours_voice_policy?: string
           restaurant_id: string
+          slot_almost_full_threshold?: number
           tone_style?: string | null
           updated_at?: string
+          voice_reservation_policy?: string
           welcome_message?: string | null
         }
         Update: {
@@ -61,9 +71,14 @@ export type Database = {
           max_advance_days?: number | null
           max_party_size_auto?: number | null
           min_notice_hours?: number | null
+          missing_phone_policy?: string
+          out_of_hours_manual_policy?: string
+          out_of_hours_voice_policy?: string
           restaurant_id?: string
+          slot_almost_full_threshold?: number
           tone_style?: string | null
           updated_at?: string
+          voice_reservation_policy?: string
           welcome_message?: string | null
         }
         Relationships: [
