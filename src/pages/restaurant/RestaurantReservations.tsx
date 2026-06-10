@@ -339,11 +339,26 @@ export default function RestaurantReservations() {
       </Card>
 
       {/* Result count */}
-      <div className="flex items-center gap-2 mb-2 px-1">
+      <div className="flex items-center justify-between gap-2 mb-2 px-1">
         <span className="text-xs text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? "reserva encontrada" : "reservas encontradas"}
           {hasActiveFilters ? " con estos filtros" : ""}
         </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground hidden sm:inline">Ordenar por</span>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
+            <SelectTrigger className="h-7 text-xs w-[180px]">
+              <ArrowUpDown className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_asc">Fecha más próxima</SelectItem>
+              <SelectItem value="date_desc">Fecha más reciente</SelectItem>
+              <SelectItem value="name_asc">Nombre A-Z</SelectItem>
+              <SelectItem value="updated_desc">Última actualización</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Empty states */}
