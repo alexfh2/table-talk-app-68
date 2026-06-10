@@ -554,6 +554,11 @@ export default function RestaurantDashboard() {
                     <ChevronRight className="h-4 w-4" />
                   </button>
                 </div>
+              </div>
+              <div className="flex flex-wrap items-baseline gap-3">
+                <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
+                  {formatHeaderDate(selectedDate, todayISO)}
+                </h1>
                 {!isViewingToday && (
                   <Button
                     variant="ghost"
@@ -565,9 +570,6 @@ export default function RestaurantDashboard() {
                   </Button>
                 )}
               </div>
-              <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
-                {formatHeaderDate(selectedDate, todayISO)}
-              </h1>
               <div className="flex flex-wrap items-center gap-3">
                 <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
                   {filterOptions.map((o) => (
@@ -752,9 +754,12 @@ export default function RestaurantDashboard() {
 
           {/* Actividad del agente */}
           <div className="rounded-2xl border border-border bg-card">
-            <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              <h3 className="font-medium text-sm">Actividad reciente</h3>
+            <div className="px-4 py-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-primary" />
+                <h3 className="font-medium text-sm">Actividad reciente</h3>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">Últimos cambios</p>
             </div>
             <div className="p-3 space-y-2">
               {activityItems.length === 0 ? (
