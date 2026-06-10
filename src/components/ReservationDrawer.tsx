@@ -29,6 +29,7 @@ export function ReservationDrawer({
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id">[]>([]);
+  const [nameTouched, setNameTouched] = useState(false);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -65,6 +66,11 @@ export function ReservationDrawer({
   const service = time < "17:00" ? "Mediodía" : "Noche";
 
   // Compute capacity for the selected slot
+  const toMin = (t: string) => {
+    const [h, m] = t.slice(0, 5).split(":").map(Number);
+    return h * 60 + m;
+  };
+
   const availability = useMemo(() => {
     if (!v.reservation_date || !time) return null;
     const dow = new Date(v.reservation_date + "T00:00:00").getDay();
@@ -76,29 +82,30 @@ export function ReservationDrawer({
       const close = s.closing_time!.slice(0, 5);
       return time >= open && time < close;
     });
-    if (!row || !row.max_guests_per_slot) return null;
+    if (!row) return { outOfService: true as const };
+    const capacity = row.max_guests_per_slot ?? 0;
+    if (!capacity) return null;
     const step = row.slot_duration_minutes ?? 30;
-    const [h, m] = time.split(":").map(Number);
-    const start = h * 60 + m;
-    const slotStart = Math.floor((start - (row.opening_time ? Number(row.opening_time.slice(0, 2)) * 60 + Number(row.opening_time.slice(3, 5)) : 0)) / step) * step
-      + (row.opening_time ? Number(row.opening_time.slice(0, 2)) * 60 + Number(row.opening_time.slice(3, 5)) : 0);
+    const openMin = toMin(row.opening_time!);
+    const start = toMin(time);
+    const slotStart = openMin + Math.floor((start - openMin) / step) * step;
     const slotEnd = slotStart + step;
     const active = new Set(["pending", "confirmed", "modified", "requires_human"]);
     const occupied = dayReservations
       .filter((r) => {
         if (initial?.id && r.id === initial.id) return false;
         if (!active.has(r.status as string)) return false;
-        const [rh, rm] = r.reservation_time.slice(0, 5).split(":").map(Number);
-        const mins = rh * 60 + rm;
+        const mins = toMin(r.reservation_time);
         return mins >= slotStart && mins < slotEnd;
       })
-      .reduce((acc, r) => acc + (r.party_size ?? 0), 0);
-    const free = Math.max(0, row.max_guests_per_slot - occupied);
-    return { free, capacity: row.max_guests_per_slot, service };
+      .reduce((acc, r) => acc + Math.max(0, r.party_size ?? 0), 0);
+    const free = Math.min(capacity, Math.max(0, capacity - occupied));
+    return { free, capacity, service, outOfService: false as const };
   }, [schedules, dayReservations, v.reservation_date, time, initial?.id, service]);
 
   const partySize = Number(v.party_size ?? 0);
-  const overCapacity = availability ? partySize > availability.free : false;
+  const overCapacity =
+    availability && !availability.outOfService ? partySize > availability.free : false;
 
   async function save(extra?: Partial<Reservation>) {
     // Validation
@@ -142,8 +149,9 @@ export function ReservationDrawer({
   const subtitle = isReview ? "Pendiente de confirmación" : initial ? "Editar datos" : "Reserva manual";
 
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
+  const nameValid = !!(v.customer_name && v.customer_name.trim());
   const canSubmit =
-    !!(v.customer_name && v.customer_name.trim()) &&
+    nameValid &&
     partySize >= 1 &&
     !!v.reservation_date &&
     !!v.reservation_time &&
@@ -158,7 +166,7 @@ export function ReservationDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-xl bg-card p-0 flex flex-col gap-0"
+        className="w-full sm:min-w-[480px] sm:max-w-[520px] bg-card p-0 flex flex-col gap-0"
       >
         {/* Fixed header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-6 py-4">
@@ -201,7 +209,14 @@ export function ReservationDrawer({
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Datos esenciales</h3>
             <div className="space-y-1.5">
               <Label>Nombre del cliente <span className="text-terracotta">*</span></Label>
-              <Input value={v.customer_name ?? ""} onChange={(e) => setV({ ...v, customer_name: e.target.value })} />
+              <Input
+                value={v.customer_name ?? ""}
+                onBlur={() => setNameTouched(true)}
+                onChange={(e) => setV({ ...v, customer_name: e.target.value })}
+              />
+              {nameTouched && !nameValid && (
+                <p className="text-xs text-terracotta">Introduce el nombre del cliente.</p>
+              )}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
@@ -261,14 +276,22 @@ export function ReservationDrawer({
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" /> Servicio detectado: <span className="font-medium text-foreground">{service}</span>
               </p>
-              {availability ? (
-                overCapacity ? (
+              {availability?.outOfService ? (
+                <p className="text-xs text-terracotta">
+                  Esta hora está fuera del horario habitual.
+                </p>
+              ) : availability ? (
+                availability.free === 0 ? (
                   <p className="text-xs text-terracotta font-medium">
-                    Esta franja está completa. Elige otra hora.
+                    {service} · franja completa
                   </p>
-                ) : availability.free <= Math.max(2, Math.ceil(availability.capacity * 0.1)) ? (
+                ) : overCapacity ? (
+                  <p className="text-xs text-terracotta font-medium">
+                    Esta franja no tiene plazas suficientes ({availability.free} libres).
+                  </p>
+                ) : availability.free <= 4 ? (
                   <p className="text-xs text-warning-foreground">
-                    Quedan pocas plazas en esta franja ({availability.free} libres).
+                    {service} · quedan pocas plazas en esta franja
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
@@ -329,6 +352,19 @@ export function ReservationDrawer({
           </section>
         </div>
         </div>
+
+        {/* Compact summary */}
+        {!isReview && v.reservation_date && v.reservation_time && partySize >= 1 && (
+          <div className="border-t border-border bg-secondary/30 px-6 py-2.5 text-xs text-muted-foreground">
+            {nameValid && (
+              <span className="font-medium text-foreground">{v.customer_name!.trim()} · </span>
+            )}
+            <span>{partySize} {partySize === 1 ? "persona" : "personas"}</span>
+            <span> · {new Date(v.reservation_date + "T00:00:00").toLocaleDateString("es-ES")}</span>
+            <span> · {time}</span>
+            <span> · {service}</span>
+          </div>
+        )}
 
         {/* Fixed footer */}
         <div className="sticky bottom-0 z-10 flex items-center justify-end gap-2 border-t border-border bg-card px-6 py-4">
