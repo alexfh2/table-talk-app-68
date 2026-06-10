@@ -92,9 +92,6 @@ export default function RestaurantSettings() {
                     <SelectContent><SelectItem value="bajo">Bajo</SelectItem><SelectItem value="medio">Medio</SelectItem><SelectItem value="alto">Alto</SelectItem></SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5"><Label>Tamaño máx. grupo automático</Label><Input type="number" value={agent.max_party_size_auto ?? 0} onChange={e => setAgent({ ...agent, max_party_size_auto: Number(e.target.value) })} /></div>
-                <div className="space-y-1.5"><Label>Antelación mínima (h)</Label><Input type="number" value={agent.min_notice_hours ?? 0} onChange={e => setAgent({ ...agent, min_notice_hours: Number(e.target.value) })} /></div>
-                <div className="space-y-1.5"><Label>Antelación máxima (días)</Label><Input type="number" value={agent.max_advance_days ?? 0} onChange={e => setAgent({ ...agent, max_advance_days: Number(e.target.value) })} /></div>
                 <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de bienvenida</Label><Textarea value={agent.welcome_message ?? ""} onChange={e => setAgent({ ...agent, welcome_message: e.target.value })} /></div>
                 <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de confirmación</Label><Textarea value={agent.confirmation_message ?? ""} onChange={e => setAgent({ ...agent, confirmation_message: e.target.value })} /></div>
                 <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de cancelación</Label><Textarea value={agent.cancellation_message ?? ""} onChange={e => setAgent({ ...agent, cancellation_message: e.target.value })} /></div>
