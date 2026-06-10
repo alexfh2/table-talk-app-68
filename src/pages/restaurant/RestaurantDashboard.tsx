@@ -15,7 +15,8 @@ import {
   Activity,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { listReservations, listSchedule } from "@/lib/queries";
+import { listReservations } from "@/lib/queries";
+import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import type { Reservation, ScheduleRow, Zone, RestaurantTable } from "@/lib/types";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { cn } from "@/lib/utils";

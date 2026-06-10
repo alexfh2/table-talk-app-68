@@ -4,8 +4,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/useAuth";
-import { listReservations, listSchedule } from "@/lib/queries";
+import { listReservations } from "@/lib/queries";
 import type { Reservation, RestaurantTable, Zone, ScheduleRow } from "@/lib/types";
+import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import { supabase } from "@/integrations/supabase/client";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { parseReviewReasonsFromNotes } from "@/lib/reservationRules";
@@ -36,10 +37,10 @@ interface DaySummary {
   pending: number;
 }
 
-function summarizeDay(date: Date, schedules: ScheduleRow[], reservations: Reservation[]): DaySummary {
+function summarizeDay(date: Date, ctx: ScheduleContext, reservations: Reservation[]): DaySummary {
   const ds = format(date, "yyyy-MM-dd");
-  const dow = date.getDay();
-  const rows = schedules.filter((s) => s.day_of_week === dow && s.is_open && s.opening_time && s.closing_time);
+  const eff = effectiveDay(ctx, ds);
+  const rows = eff.services;
   const dayRes = reservations.filter((r) => r.reservation_date === ds);
   const services = rows
     .sort((a, b) => (a.opening_time! < b.opening_time! ? -1 : 1))
@@ -107,7 +108,7 @@ export default function RestaurantCalendar() {
   const [items, setItems] = useState<Reservation[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [ctx, setCtx] = useState<ScheduleContext>({ schedule: [], seasons: [], exceptions: [] });
   const [drawer, setDrawer] = useState<{ open: boolean; mode: DrawerMode; initial: Reservation | null }>({
     open: false, mode: "create", initial: null,
   });
@@ -117,7 +118,7 @@ export default function RestaurantCalendar() {
     listReservations(rid).then(setItems);
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid).then(({ data }) => setTables((data ?? []) as RestaurantTable[]));
     supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid).then(({ data }) => setZones((data ?? []) as Zone[]));
-    listSchedule(rid).then(setSchedules).catch(() => setSchedules([]));
+    loadScheduleContext(rid).then(setCtx).catch(() => setCtx({ schedule: [], seasons: [], exceptions: [] }));
   }
   useEffect(reload, [rid]);
 
@@ -160,10 +161,10 @@ export default function RestaurantCalendar() {
   );
 
   const weekSummaries = useMemo(
-    () => weekDays.map((d) => summarizeDay(d, schedules, items)),
-    [weekDays, schedules, items],
+    () => weekDays.map((d) => summarizeDay(d, ctx, items)),
+    [weekDays, ctx, items],
   );
-  const daySummary = useMemo(() => summarizeDay(date, schedules, items), [date, schedules, items]);
+  const daySummary = useMemo(() => summarizeDay(date, ctx, items), [date, ctx, items]);
 
   const headerLabel =
     view === "day"
