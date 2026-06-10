@@ -609,7 +609,7 @@ export default function RestaurantDashboard() {
               <div className="flex items-baseline gap-2 ml-auto">
                 {reviewCount === 0 ? (
                   <span className="inline-flex items-center gap-1.5 text-xs text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Hoy revisado
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {isViewingToday ? "Hoy revisado" : "Día revisado"}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 text-xs text-terracotta">
@@ -660,7 +660,7 @@ export default function RestaurantDashboard() {
                 <AlertCircle className="h-4 w-4 text-terracotta" />
               )}
               <h3 className="font-medium text-sm">
-                {reviewItems.length === 0 ? "Hoy revisado" : "Necesita revisión"}
+                {reviewItems.length === 0 ? (isViewingToday ? "Hoy revisado" : "Día revisado") : "Necesita revisión"}
               </h3>
               {reviewItems.length > 0 && (
                 <span className="ml-auto text-xs text-muted-foreground">{reviewItems.length}</span>
@@ -669,14 +669,14 @@ export default function RestaurantDashboard() {
             <div className="p-3 space-y-2">
               {reviewItems.length === 0 ? (
                 <p className="px-2 py-3 text-xs text-muted-foreground">
-                  No hay reservas de hoy pendientes de comprobar.
+                  No hay reservas del día pendientes de comprobar.
                 </p>
               ) : (
                 <>
                   <p className="px-2 pt-1 pb-1 text-xs text-muted-foreground">
                     {reviewItems.length === 1
-                      ? "1 reserva de hoy necesita confirmación."
-                      : `${reviewItems.length} reservas de hoy necesitan confirmación.`}
+                      ? "1 reserva del día necesita confirmación."
+                      : `${reviewItems.length} reservas del día necesitan confirmación.`}
                   </p>
                   {reviewItems.map((r) => (
                     <div key={r.id} className="rounded-xl border border-terracotta/30 bg-terracotta/5 px-3 py-2.5">
