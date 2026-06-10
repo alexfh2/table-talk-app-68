@@ -6,8 +6,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
-import { listSchedule } from "@/lib/queries";
-import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow } from "@/lib/types";
+import { listSchedule, getAgentSettings } from "@/lib/queries";
+import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
+import { evaluateReservationRules, appendReviewReasonsToNotes } from "@/lib/reservationRules";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -54,7 +55,8 @@ export function ReservationDrawer({
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
-  const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id">[]>([]);
+  const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id" | "customer_name">[]>([]);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
@@ -66,6 +68,7 @@ export function ReservationDrawer({
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId).order("sort_order")
       .then(({ data }) => setTables((data as RestaurantTable[]) ?? []));
     listSchedule(restaurantId).then(setSchedules).catch(() => setSchedules([]));
+    getAgentSettings(restaurantId).then(setAgentSettings).catch(() => setAgentSettings(null));
   }, [open, restaurantId]);
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export function ReservationDrawer({
     if (!open || !restaurantId || !v.reservation_date) return;
     supabase
       .from("reservations")
-      .select("id, reservation_time, party_size, status")
+      .select("id, reservation_time, party_size, status, customer_name")
       .eq("restaurant_id", restaurantId)
       .eq("reservation_date", v.reservation_date)
       .then(({ data }) => setDayReservations((data as any) ?? []));
@@ -135,31 +138,67 @@ export function ReservationDrawer({
   const overCapacity =
     availability && !availability.outOfService ? partySize > availability.free : false;
 
+  const evaluation = useMemo(() => {
+    const avail = availability
+      ? {
+          outOfService: !!availability.outOfService,
+          free: availability.outOfService ? null : availability.free,
+          capacity: availability.outOfService ? null : availability.capacity,
+          service: null as null,
+        }
+      : null;
+    return evaluateReservationRules(
+      {
+        customer_name: v.customer_name,
+        customer_phone: v.customer_phone,
+        reservation_date: v.reservation_date,
+        reservation_time: v.reservation_time,
+        party_size: v.party_size,
+        id: initial?.id,
+      },
+      agentSettings,
+      avail,
+      dayReservations,
+    );
+  }, [v, availability, agentSettings, dayReservations, initial?.id]);
+
   async function save(extra?: Partial<Reservation>) {
-    // Validation
-    if (!v.customer_name || !v.customer_name.trim()) {
-      toast.error("Introduce el nombre del cliente.");
-      return;
-    }
-    if (!partySize || partySize < 1) {
-      toast.error("Indica el número de personas.");
-      return;
-    }
-    if (!v.reservation_date || !v.reservation_time) {
-      toast.error("Selecciona fecha y hora.");
-      return;
-    }
-    if (!initial && overCapacity) {
-      toast.error("Esta franja no tiene plazas suficientes.");
-      return;
+    // For new manual reservations, apply confirmation rules
+    const isNewManual = !initial && !extra?.status;
+    let appliedStatus: ReservationStatus | undefined = extra?.status as ReservationStatus | undefined;
+    let appliedNotes = v.internal_notes ?? "";
+    if (isNewManual) {
+      if (!evaluation || !evaluation.canSave) {
+        toast.error(evaluation?.blockingReason ?? "Revisa los datos de la reserva.");
+        return;
+      }
+      appliedStatus = (evaluation.suggestedStatus ?? "confirmed") as ReservationStatus;
+      if (appliedStatus === "requires_human") {
+        appliedNotes = appendReviewReasonsToNotes(v.internal_notes, evaluation.reviewReasons);
+      }
+    } else {
+      // Edit path: keep existing simple validation
+      if (!v.customer_name || !v.customer_name.trim()) {
+        toast.error("Introduce el nombre del cliente.");
+        return;
+      }
+      if (!partySize || partySize < 1) {
+        toast.error("Indica el número de personas.");
+        return;
+      }
+      if (!v.reservation_date || !v.reservation_time) {
+        toast.error("Selecciona fecha y hora.");
+        return;
+      }
     }
     setSaving(true);
     const payload = {
       ...v,
       ...extra,
+      internal_notes: appliedNotes,
       restaurant_id: restaurantId,
       // Defaults for manual creation
-      status: (extra?.status ?? v.status ?? "confirmed") as ReservationStatus,
+      status: (appliedStatus ?? v.status ?? "confirmed") as ReservationStatus,
       channel: (v.channel ?? "manual") as ReservationChannel,
     } as any;
     const res = initial?.id
@@ -167,7 +206,13 @@ export function ReservationDrawer({
       : await supabase.from("reservations").insert(payload);
     setSaving(false);
     if (res.error) return toast.error(res.error.message);
-    toast.success(initial ? "Reserva actualizada." : "Reserva guardada.");
+    if (initial) {
+      toast.success("Reserva actualizada.");
+    } else if (appliedStatus === "requires_human") {
+      toast.success("Reserva guardada para revisar.");
+    } else {
+      toast.success("Reserva guardada.");
+    }
     onOpenChange(false);
     onSaved();
   }
@@ -207,12 +252,12 @@ export function ReservationDrawer({
 
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
-  const canSubmit =
-    nameValid &&
-    partySize >= 1 &&
-    !!v.reservation_date &&
-    !!v.reservation_time &&
-    (initial ? true : !overCapacity);
+  const isCreate = !initial && mode === "create";
+  const canSubmit = isCreate
+    ? !!evaluation?.canSave
+    : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
+  const createButtonLabel =
+    evaluation?.suggestedStatus === "requires_human" ? "Guardar para revisar" : "Guardar reserva";
 
   function bumpParty(delta: number) {
     const next = Math.min(30, Math.max(1, partySize + delta));
@@ -378,6 +423,34 @@ export function ReservationDrawer({
             </div>
           </section>
 
+          {isCreate && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0) && (
+            <div className="space-y-2">
+              {evaluation.blockingReason && nameTouched && (
+                <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{evaluation.blockingReason}</span>
+                </div>
+              )}
+              {!evaluation.blockingReason && evaluation.reviewReasons.length > 0 && (
+                <div className="rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2.5 text-sm text-terracotta space-y-1">
+                  <p className="flex items-start gap-2 font-medium">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    Esta reserva requerirá revisión.
+                  </p>
+                  <ul className="ml-6 list-disc text-xs space-y-0.5">
+                    {evaluation.reviewReasons.map((r) => <li key={r}>{r}</li>)}
+                  </ul>
+                </div>
+              )}
+              {!evaluation.blockingReason && evaluation.warnings.length > 0 && (
+                <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning-foreground">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{evaluation.warnings.join(" ")}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación</h3>
             <div className="space-y-1.5">
@@ -533,7 +606,7 @@ export function ReservationDrawer({
             </>
           ) : (
             <Button onClick={() => save()} disabled={saving || !canSubmit}>
-              {saving ? "Guardando…" : isEdit ? "Guardar cambios" : "Guardar reserva"}
+              {saving ? "Guardando…" : isEdit ? "Guardar cambios" : createButtonLabel}
             </Button>
           )}
         </div>
