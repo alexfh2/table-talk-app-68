@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { listSchedule, getAgentSettings } from "@/lib/queries";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
-import { evaluateReservationRules, appendReviewReasonsToNotes } from "@/lib/reservationRules";
+import { evaluateReservationRules, appendReviewReasonsToNotes, parseReviewReasonsFromNotes } from "@/lib/reservationRules";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -61,6 +61,7 @@ export function ReservationDrawer({
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
+  const [confirmWithWarnings, setConfirmWithWarnings] = useState(false);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -217,13 +218,39 @@ export function ReservationDrawer({
 
   const isReview = mode === "review";
   const isEdit = mode === "edit" && !!initial;
-  const title = isReview ? "Revisar reserva creada por voz" : isEdit ? "Editar reserva" : "Nueva reserva";
+  const title = isReview ? "Revisar reserva" : isEdit ? "Editar reserva" : "Nueva reserva";
   const editSubtitle = isEdit
     ? `${(initial?.customer_name ?? "Reserva").trim()} · ${initial?.party_size ?? v.party_size ?? 0} ${
         (initial?.party_size ?? 0) === 1 ? "persona" : "personas"
       } · ${(initial?.reservation_time ?? "").slice(0, 5)}`
     : "";
-  const subtitle = isReview ? "Pendiente de confirmación" : isEdit ? editSubtitle : "Reserva manual";
+  const reviewChannel = (v.channel as string) || (initial?.channel as string) || "manual";
+  const reviewSubtitle =
+    reviewChannel === "future_voice" ? "Creada por voz" :
+    reviewChannel === "whatsapp" ? "WhatsApp" :
+    reviewChannel === "external_calendar" ? "Calendario externo" :
+    "Reserva manual";
+  const subtitle = isReview ? reviewSubtitle : isEdit ? editSubtitle : "Reserva manual";
+
+  // Aggregate review reasons: live evaluation + persisted notes
+  const persistedReasons = useMemo(
+    () => parseReviewReasonsFromNotes(v.internal_notes),
+    [v.internal_notes],
+  );
+  const allReviewReasons = useMemo(() => {
+    const set = new Set<string>();
+    (evaluation?.reviewReasons ?? []).forEach((r) => set.add(r));
+    // Only show persisted reasons that are still relevant — keep them if we can't infer otherwise
+    if (!evaluation || evaluation.reviewReasons.length === 0) {
+      persistedReasons.forEach((r) => set.add(r));
+    } else {
+      persistedReasons.forEach((r) => set.add(r));
+    }
+    if (reviewChannel === "future_voice" && !set.has("Creada por voz.")) {
+      // soft note for voice provenance
+    }
+    return Array.from(set);
+  }, [evaluation, persistedReasons, reviewChannel]);
 
   const todayISO = new Date().toISOString().slice(0, 10);
   const nowHHMM = new Date().toTimeString().slice(0, 5);
@@ -246,6 +273,48 @@ export function ReservationDrawer({
     toast.success(msg);
     onOpenChange(false);
     onSaved();
+  }
+
+  /** Review-mode save: persists current form. Optionally forces status. */
+  async function reviewSave(opts: { status?: ReservationStatus; confirmAnyway?: boolean; successMsg: string }) {
+    if (!v.customer_name || !v.customer_name.trim()) { toast.error("Introduce el nombre del cliente."); return; }
+    if (!partySize || partySize < 1) { toast.error("Indica el número de personas."); return; }
+    if (!v.reservation_date || !v.reservation_time) { toast.error("Selecciona fecha y hora."); return; }
+    if (evaluation?.blockingReason) { toast.error(evaluation.blockingReason); return; }
+
+    let notes = v.internal_notes ?? "";
+    if (opts.status === "confirmed" && opts.confirmAnyway && allReviewReasons.length > 0) {
+      const line = `Confirmada manualmente con avisos pendientes: ${allReviewReasons.map((r) => r.replace(/\.$/, "")).join("; ")}.`;
+      notes = notes.trim() ? `${notes.trim()}\n${line}` : line;
+    }
+
+    setSaving(true);
+    const payload: any = {
+      ...v,
+      internal_notes: notes,
+      restaurant_id: restaurantId,
+    };
+    if (opts.status) payload.status = opts.status;
+    const res = initial?.id
+      ? await supabase.from("reservations").update(payload).eq("id", initial.id)
+      : await supabase.from("reservations").insert(payload);
+    setSaving(false);
+    if (res.error) return toast.error(res.error.message);
+    toast.success(opts.successMsg);
+    onOpenChange(false);
+    onSaved();
+  }
+
+  function onReviewConfirmClick() {
+    if (evaluation?.blockingReason) {
+      toast.error(evaluation.blockingReason);
+      return;
+    }
+    if (allReviewReasons.length > 0) {
+      setConfirmWithWarnings(true);
+      return;
+    }
+    reviewSave({ status: "confirmed" as ReservationStatus, successMsg: "Reserva confirmada." });
   }
 
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
@@ -304,21 +373,38 @@ export function ReservationDrawer({
         )}
 
         {isReview && (
-          <div className="mb-5 rounded-2xl border border-border bg-secondary/40 p-4 space-y-1.5 text-sm">
-            <p><span className="text-muted-foreground">Nombre · </span><span className="font-medium">{v.customer_name || "—"}</span></p>
-            <p><span className="text-muted-foreground">Personas · </span>{v.party_size}</p>
-            <p><span className="text-muted-foreground">Fecha · </span>{v.reservation_date}</p>
-            <p><span className="text-muted-foreground">Hora · </span>{(v.reservation_time ?? "").slice(0, 5)}</p>
-            <p><span className="text-muted-foreground">Teléfono · </span>{v.customer_phone || <span className="text-terracotta">no facilitado</span>}</p>
-            {v.customer_notes && <p><span className="text-muted-foreground">Nota · </span>{v.customer_notes}</p>}
-          </div>
-        )}
+          <>
+            {/* Banner de revisión */}
+            <div className="mb-4 rounded-2xl border border-terracotta/30 bg-terracotta/10 p-4 space-y-2">
+              <p className="font-medium text-terracotta flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                Esta reserva necesita revisión.
+              </p>
+              {allReviewReasons.length > 0 ? (
+                <ul className="ml-6 list-disc text-xs text-terracotta space-y-0.5">
+                  {allReviewReasons.map((r) => <li key={r}>{r}</li>)}
+                </ul>
+              ) : (
+                <p className="ml-6 text-xs text-terracotta/80">Revisa los datos y confirma cuando todo sea correcto.</p>
+              )}
+            </div>
 
-        {isReview && missingPhone && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2 text-sm text-terracotta">
-            <AlertCircle className="h-4 w-4 mt-0.5" />
-            <span>Falta teléfono del cliente.</span>
-          </div>
+            {/* Datos detectados */}
+            <div className="mb-5 rounded-2xl border border-border bg-secondary/40 p-4 space-y-1.5 text-sm">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                {reviewChannel === "future_voice" ? "El agente entendió" : "Datos actuales"}
+              </p>
+              <p><span className="text-muted-foreground">Nombre · </span><span className="font-medium">{v.customer_name || "—"}</span></p>
+              <p><span className="text-muted-foreground">Personas · </span>{v.party_size}</p>
+              <p><span className="text-muted-foreground">Fecha · </span>{v.reservation_date}</p>
+              <p><span className="text-muted-foreground">Hora · </span>{(v.reservation_time ?? "").slice(0, 5)}</p>
+              <p>
+                <span className="text-muted-foreground">Teléfono · </span>
+                {v.customer_phone || <span className="text-terracotta">{reviewChannel === "future_voice" ? "no detectado" : "no facilitado"}</span>}
+              </p>
+              {v.customer_notes && <p><span className="text-muted-foreground">Nota · </span>{v.customer_notes}</p>}
+            </div>
+          </>
         )}
 
         <div className="space-y-5">
@@ -419,15 +505,15 @@ export function ReservationDrawer({
             </div>
           </section>
 
-          {(isCreate || isEdit) && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
+          {(isCreate || isEdit || isReview) && evaluation && (evaluation.blockingReason || (!isReview && evaluation.reviewReasons.length > 0) || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
             <div className="space-y-2">
-              {evaluation.blockingReason && (nameTouched || isEdit || evaluation.blockingReason !== "Introduce el nombre del cliente.") && (
+              {evaluation.blockingReason && (nameTouched || isEdit || isReview || evaluation.blockingReason !== "Introduce el nombre del cliente.") && (
                 <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>{evaluation.blockingReason}</span>
                 </div>
               )}
-              {!evaluation.blockingReason && evaluation.reviewReasons.length > 0 && (
+              {!evaluation.blockingReason && !isReview && evaluation.reviewReasons.length > 0 && (
                 <div className="rounded-xl border border-terracotta/30 bg-terracotta/10 px-3 py-2.5 text-sm text-terracotta space-y-1">
                   <p className="flex items-start gap-2 font-medium">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
@@ -524,8 +610,9 @@ export function ReservationDrawer({
           </section>
         </div>
 
-          {isEdit && (
+          {(isEdit || isReview) && (
             <>
+              {isEdit && (
               <section className="space-y-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Estado de la reserva
@@ -547,12 +634,27 @@ export function ReservationDrawer({
                   Origen: <span className="text-foreground font-medium">{CHANNEL_LABEL[(v.channel as string) ?? "manual"]}</span>
                 </p>
               </section>
+              )}
+              {isReview && (
+                <p className="text-xs text-muted-foreground">
+                  Origen: <span className="text-foreground font-medium">{CHANNEL_LABEL[(v.channel as string) ?? "manual"]}</span>
+                </p>
+              )}
 
               <section className="space-y-3 rounded-xl border border-border/60 bg-secondary/30 p-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Acciones de reserva
                 </h3>
                 <div className="flex flex-wrap gap-2">
+                  {isReview && (
+                    <button
+                      type="button"
+                      onClick={() => reviewSave({ status: "pending" as ReservationStatus, successMsg: "Reserva marcada como pendiente." })}
+                      className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+                    >
+                      <Clock className="h-3.5 w-3.5" /> Mantener pendiente
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setConfirmCancel(true)}
@@ -597,8 +699,14 @@ export function ReservationDrawer({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
           {isReview ? (
             <>
-              <Button variant="outline" onClick={() => save({ status: "pending" })}>Mantener pendiente</Button>
-              <Button onClick={() => save({ status: "confirmed" })} disabled={saving}>
+              <Button
+                variant="outline"
+                onClick={() => reviewSave({ successMsg: "Cambios guardados." })}
+                disabled={saving || !!evaluation?.blockingReason}
+              >
+                Guardar cambios
+              </Button>
+              <Button onClick={onReviewConfirmClick} disabled={saving || !!evaluation?.blockingReason}>
                 <CheckCircle2 className="h-4 w-4 mr-1.5" /> Confirmar reserva
               </Button>
             </>
@@ -639,6 +747,30 @@ export function ReservationDrawer({
             <AlertDialogCancel>Volver</AlertDialogCancel>
             <AlertDialogAction onClick={() => quickStatusChange("no_show" as ReservationStatus, "Reserva marcada como no-show.")}>
               Sí, marcar no-show
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={confirmWithWarnings} onOpenChange={setConfirmWithWarnings}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esta reserva todavía tiene avisos</AlertDialogTitle>
+            <AlertDialogDescription>
+              La reserva aún tiene motivos de revisión. Puedes confirmarla igualmente si ya lo has comprobado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {allReviewReasons.length > 0 && (
+            <ul className="ml-5 list-disc text-sm text-muted-foreground space-y-0.5">
+              {allReviewReasons.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => reviewSave({ status: "confirmed" as ReservationStatus, confirmAnyway: true, successMsg: "Reserva confirmada." })}
+            >
+              Confirmar igualmente
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
