@@ -421,7 +421,7 @@ export function ReservationDrawer({
 
           {(isCreate || isEdit) && evaluation && (evaluation.blockingReason || evaluation.reviewReasons.length > 0 || evaluation.warnings.length > 0 || (isEdit && statusManuallyChanged && v.status === "confirmed" && evaluation.reviewReasons.length > 0)) && (
             <div className="space-y-2">
-              {evaluation.blockingReason && nameTouched && (
+              {evaluation.blockingReason && (nameTouched || isEdit || evaluation.blockingReason !== "Introduce el nombre del cliente.") && (
                 <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                   <span>{evaluation.blockingReason}</span>
