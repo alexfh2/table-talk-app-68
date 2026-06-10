@@ -64,7 +64,7 @@ export default function RestaurantSettings() {
           <TabsTrigger value="schedule">Horarios y capacidad</TabsTrigger>
           <TabsTrigger value="tables">Mesas</TabsTrigger>
           <TabsTrigger value="rules">Reglas de confirmación</TabsTrigger>
-          <TabsTrigger value="faqs">FAQs</TabsTrigger>
+          <TabsTrigger value="faqs">FAQs del agente</TabsTrigger>
           <TabsTrigger value="agent">Tono del agente</TabsTrigger>
           <TabsTrigger value="notifications">Notificaciones</TabsTrigger>
           <TabsTrigger value="data">Datos del restaurante</TabsTrigger>
@@ -79,7 +79,17 @@ export default function RestaurantSettings() {
           {agent && (
             <Card><CardHeader><CardTitle className="text-base">Tono del agente</CardTitle></CardHeader>
               <CardContent className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-1.5"><Label>Idioma principal</Label><Input value={agent.main_language ?? ""} onChange={e => setAgent({ ...agent, main_language: e.target.value })} /></div>
+                <div className="space-y-1.5"><Label>Idioma principal</Label>
+                  <Select value={agent.main_language ?? "es"} onValueChange={v => setAgent({ ...agent, main_language: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="es">Español</SelectItem>
+                      <SelectItem value="ca">Catalán</SelectItem>
+                      <SelectItem value="en">Inglés</SelectItem>
+                      <SelectItem value="fr">Francés</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="space-y-1.5"><Label>Estilo de tono</Label>
                   <Select value={agent.tone_style ?? ""} onValueChange={v => setAgent({ ...agent, tone_style: v })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
@@ -92,11 +102,14 @@ export default function RestaurantSettings() {
                     <SelectContent><SelectItem value="bajo">Bajo</SelectItem><SelectItem value="medio">Medio</SelectItem><SelectItem value="alto">Alto</SelectItem></SelectContent>
                   </Select>
                 </div>
-                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de bienvenida</Label><Textarea value={agent.welcome_message ?? ""} onChange={e => setAgent({ ...agent, welcome_message: e.target.value })} /></div>
-                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de confirmación</Label><Textarea value={agent.confirmation_message ?? ""} onChange={e => setAgent({ ...agent, confirmation_message: e.target.value })} /></div>
-                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de cancelación</Label><Textarea value={agent.cancellation_message ?? ""} onChange={e => setAgent({ ...agent, cancellation_message: e.target.value })} /></div>
-                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de paso a humano</Label><Textarea value={agent.human_handoff_message ?? ""} onChange={e => setAgent({ ...agent, human_handoff_message: e.target.value })} /></div>
-                <div className="md:col-span-2 space-y-1.5"><Label>Instrucciones adicionales</Label><Textarea value={agent.additional_instructions ?? ""} onChange={e => setAgent({ ...agent, additional_instructions: e.target.value })} /></div>
+                <div className="md:col-span-2 rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                  Usa <code className="font-mono">{"{nombre_restaurante}"}</code> en los mensajes para insertar el nombre del restaurante automáticamente.
+                </div>
+                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de bienvenida</Label><Textarea value={replaceNameWithVar(agent.welcome_message, r.name)} onChange={e => setAgent({ ...agent, welcome_message: e.target.value })} placeholder="Hola, has llamado a {nombre_restaurante}…" /></div>
+                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de confirmación</Label><Textarea value={replaceNameWithVar(agent.confirmation_message, r.name)} onChange={e => setAgent({ ...agent, confirmation_message: e.target.value })} placeholder="Tu reserva en {nombre_restaurante} está confirmada." /></div>
+                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de cancelación</Label><Textarea value={replaceNameWithVar(agent.cancellation_message, r.name)} onChange={e => setAgent({ ...agent, cancellation_message: e.target.value })} placeholder="Tu reserva en {nombre_restaurante} ha sido cancelada." /></div>
+                <div className="md:col-span-2 space-y-1.5"><Label>Mensaje de paso a humano</Label><Textarea value={replaceNameWithVar(agent.human_handoff_message, r.name)} onChange={e => setAgent({ ...agent, human_handoff_message: e.target.value })} placeholder="Te paso con el equipo de {nombre_restaurante}." /></div>
+                <div className="md:col-span-2 space-y-1.5"><Label>Instrucciones adicionales</Label><Textarea value={replaceNameWithVar(agent.additional_instructions, r.name)} onChange={e => setAgent({ ...agent, additional_instructions: e.target.value })} /></div>
                 <div className="md:col-span-2 flex justify-end"><Button onClick={saveAgent}>Guardar</Button></div>
               </CardContent>
             </Card>
@@ -123,8 +136,8 @@ export default function RestaurantSettings() {
                     ["notify_new_reservation","Nueva reserva"],
                     ["notify_modified_reservation","Reserva modificada"],
                     ["notify_cancelled_reservation","Reserva cancelada"],
-                    ["notify_human_required","Requiere humano"],
-                    ["send_summary","Resumen periódico"],
+                    ["notify_human_required","Requiere revisión"],
+                    ["send_summary","Resumen diario"],
                   ].map(([k,l]) => (
                     <div key={k} className="flex items-center justify-between rounded-lg border px-3 py-2">
                       <span className="text-sm">{l}</span>
@@ -148,7 +161,7 @@ export default function RestaurantSettings() {
         </TabsContent>
 
         <TabsContent value="data">
-          <Card><CardHeader><CardTitle className="text-base">Datos del restaurante</CardTitle></CardHeader><CardContent><RestaurantForm initial={r} onSubmit={saveRest} /></CardContent></Card>
+          <Card><CardHeader><CardTitle className="text-base">Datos del restaurante</CardTitle></CardHeader><CardContent><RestaurantForm initial={r} onSubmit={saveRest} hideAdminFields /></CardContent></Card>
         </TabsContent>
       </Tabs>
     </AppShell>
