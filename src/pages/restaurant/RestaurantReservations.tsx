@@ -310,7 +310,7 @@ export default function RestaurantReservations() {
         </div>
 
         {/* Quick chips */}
-        <div className="flex flex-wrap gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 mt-2">
           {QUICK_CHIPS.map((c) => (
             <button
               key={c.id}
