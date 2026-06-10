@@ -118,9 +118,24 @@ export default function RestaurantDashboard() {
     [res, todayISO],
   );
 
-  const svc = useMemo(() => nextSlots(schedule, dow), [schedule, dow]);
-  const slotList = useMemo(() => buildSlotList(svc), [svc]);
-  const capacityPerSlot = svc?.max_guests_per_slot ?? 20;
+  const todaySchedule = useMemo(
+    () => schedule.filter((s) => s.day_of_week === dow && s.is_open && s.opening_time && s.closing_time),
+    [schedule, dow],
+  );
+  const lunchSvc = todaySchedule.find((s) => s.service_period === "lunch") ?? null;
+  const dinnerSvc = todaySchedule.find((s) => s.service_period === "dinner") ?? null;
+
+  const [filter, setFilter] = useState<ServiceFilter>("all");
+  // Default to current service when both exist
+  useEffect(() => {
+    if (!lunchSvc && !dinnerSvc) return;
+    // keep "all" — let the user choose
+  }, [lunchSvc, dinnerSvc]);
+
+  const visibleRes = useMemo(() => {
+    if (filter === "all") return todayRes;
+    return todayRes.filter((r) => inService(r.reservation_time, filter));
+  }, [todayRes, filter]);
 
   const occupancy = useMemo(() => {
     const map = new Map<string, number>();
@@ -131,15 +146,17 @@ export default function RestaurantDashboard() {
     return map;
   }, [todayRes]);
 
-  const totalGuests = todayRes.reduce((acc, r) => acc + r.party_size, 0);
-  const pendingCount = todayRes.filter((r) => r.status === "pending").length;
-  const reviewCount = todayRes.filter((r) => r.status === "requires_human").length;
+  const totalGuests = visibleRes.reduce((acc, r) => acc + r.party_size, 0);
+  const pendingCount = visibleRes.filter((r) => r.status === "pending").length;
+  const reviewCount = visibleRes.filter((r) => r.status === "requires_human").length;
 
   const reviewItems = todayRes.filter((r) => r.status === "requires_human");
-  const voiceItems = res
-    .filter((r) => r.channel === "future_voice")
+  const activityItems = res
+    .filter((r) =>
+      r.channel === "future_voice" || r.status === "cancelled" || r.status === "requires_human",
+    )
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
-    .slice(0, 3);
+    .slice(0, 5);
 
   function openCreate() {
     setDrawerMode("create"); setDrawerInitial(null); setDrawerOpen(true);
