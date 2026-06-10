@@ -60,6 +60,7 @@ export function ReservationDrawer({
   const [nameTouched, setNameTouched] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
+  const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -80,6 +81,7 @@ export function ReservationDrawer({
       channel: "manual" as ReservationChannel,
       customer_notes: "", internal_notes: "", table_id: null,
     });
+    setStatusManuallyChanged(false);
   }, [initial, open]);
 
   // Load same-day reservations to compute availability
@@ -176,19 +178,15 @@ export function ReservationDrawer({
       if (appliedStatus === "requires_human") {
         appliedNotes = appendReviewReasonsToNotes(v.internal_notes, evaluation.reviewReasons);
       }
-    } else {
-      // Edit path: keep existing simple validation
-      if (!v.customer_name || !v.customer_name.trim()) {
-        toast.error("Introduce el nombre del cliente.");
+    } else if (initial && !extra?.status) {
+      // Edit path: apply same rules but respect manual status override
+      if (!evaluation || !evaluation.canSave) {
+        toast.error(evaluation?.blockingReason ?? "Revisa los datos de la reserva.");
         return;
       }
-      if (!partySize || partySize < 1) {
-        toast.error("Indica el número de personas.");
-        return;
-      }
-      if (!v.reservation_date || !v.reservation_time) {
-        toast.error("Selecciona fecha y hora.");
-        return;
+      if (!statusManuallyChanged && evaluation.suggestedStatus === "requires_human") {
+        appliedStatus = "requires_human" as ReservationStatus;
+        appliedNotes = appendReviewReasonsToNotes(v.internal_notes, evaluation.reviewReasons);
       }
     }
     setSaving(true);
@@ -207,7 +205,7 @@ export function ReservationDrawer({
     setSaving(false);
     if (res.error) return toast.error(res.error.message);
     if (initial) {
-      toast.success("Reserva actualizada.");
+      toast.success("Cambios guardados.");
     } else if (appliedStatus === "requires_human") {
       toast.success("Reserva guardada para revisar.");
     } else {
@@ -253,9 +251,7 @@ export function ReservationDrawer({
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
   const isCreate = !initial && mode === "create";
-  const canSubmit = isCreate
-    ? !!evaluation?.canSave
-    : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
+  const canSubmit = (isCreate || isEdit) ? !!evaluation?.canSave : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
   const createButtonLabel =
     evaluation?.suggestedStatus === "requires_human" ? "Guardar para revisar" : "Guardar reserva";
 
