@@ -340,7 +340,7 @@ export function ReservationDrawer({
         {/* Fixed header */}
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-border bg-card px-6 py-4">
           <div>
-            <h2 className="font-serif text-2xl tracking-tight leading-tight">{title}</h2>
+            <h2 className="text-2xl tracking-tight leading-tight">{title}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>
           </div>
           <button
