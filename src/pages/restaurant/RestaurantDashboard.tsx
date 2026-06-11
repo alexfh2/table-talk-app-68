@@ -439,7 +439,7 @@ export default function RestaurantDashboard() {
     return (
       <div>
         <div className="px-5 py-3 flex items-baseline justify-between bg-secondary/30 border-y border-border">
-          <h3 className="font-serif text-base">{label}</h3>
+          <h3 className="text-base">{label}</h3>
           <span className="text-[11px] text-muted-foreground tabular-nums">{range} · {items.length} reservas · {guests} personas</span>
         </div>
         {groups.length === 0 ? (
@@ -475,7 +475,7 @@ export default function RestaurantDashboard() {
       <div className="rounded-2xl border border-border bg-card px-5 py-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
           <div>
-            <p className="font-serif text-base text-foreground">{headline}</p>
+            <p className="text-base text-foreground">{headline}</p>
             <p className="text-xs text-muted-foreground">{sub}</p>
           </div>
           <span className="text-[11px] text-muted-foreground">Capacidad: {cap} personas por franja</span>
@@ -514,7 +514,7 @@ export default function RestaurantDashboard() {
     const dinnerGuests = dinnerItems.reduce((a, r) => a + r.party_size, 0);
     return (
       <div className="rounded-2xl border border-border bg-card px-5 py-4">
-        <p className="font-serif text-base text-foreground mb-2">Estado del día</p>
+        <p className="text-base text-foreground mb-2">Estado del día</p>
         <div className="space-y-1 text-sm">
           <p className="flex items-baseline gap-2">
             <span className="text-muted-foreground w-20">Mediodía</span>
@@ -585,7 +585,7 @@ export default function RestaurantDashboard() {
                   </button>
                 )}
               </div>
-              <h1 className="font-serif text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
+              <h1 className="text-[28px] sm:text-[32px] leading-tight tracking-tight text-foreground">
                 {formatHeaderDate(selectedDate, todayISO)}
               </h1>
               <div className="flex flex-wrap items-center gap-3">
@@ -622,7 +622,7 @@ export default function RestaurantDashboard() {
             <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
               {summary.map((m, i) => (
                 <div key={i} className="flex items-baseline gap-2">
-                  <span className="font-serif text-3xl tabular-nums text-foreground leading-none">{m.v}</span>
+                  <span className="text-3xl tabular-nums text-foreground leading-none">{m.v}</span>
                   <span className="text-xs text-muted-foreground">{m.l}</span>
                 </div>
               ))}
@@ -653,7 +653,7 @@ export default function RestaurantDashboard() {
           {/* Agenda */}
           <section className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between">
-              <h2 className="font-serif text-lg">Agenda</h2>
+              <h2 className="text-lg">Agenda</h2>
               <span className="text-xs text-muted-foreground">{visibleRes.length} {visibleRes.length === 1 ? "reserva" : "reservas"} en total</span>
             </div>
             {filter === "all" ? (
