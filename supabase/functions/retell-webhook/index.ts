@@ -49,21 +49,88 @@ function dayOfWeekFromISO(d: string): number {
   return new Date(Date.UTC(y, (m ?? 1) - 1, day ?? 1)).getUTCDay();
 }
 
-async function validateSlot(restaurantId: string, date: string, time: string) {
+/**
+ * Compute the effective services for a given date, applying priority:
+ *   Exception > Season > Base schedule.
+ * Mirrors src/lib/effectiveSchedule.ts so the agent sees the same hours
+ * as the dashboard.
+ */
+async function getEffectiveServices(restaurantId: string, date: string) {
   const dow = dayOfWeekFromISO(date);
-  const [{ data: schedule }, { data: blocked }] = await Promise.all([
+  const [schedRes, seasonsRes, excRes] = await Promise.all([
     supabase.from("restaurant_schedule").select("*").eq("restaurant_id", restaurantId).eq("day_of_week", dow),
-    supabase.from("blocked_dates").select("*").eq("restaurant_id", restaurantId).eq("blocked_date", date),
+    supabase.from("schedule_seasons").select("*").eq("restaurant_id", restaurantId)
+      .lte("start_date", date).gte("end_date", date),
+    supabase.from("blocked_dates").select("*").eq("restaurant_id", restaurantId).eq("date", date),
   ]);
-  if ((blocked?.length ?? 0) > 0) {
-    return { ok: false, error: "date_blocked", message: "El restaurante no acepta reservas ese día (fecha bloqueada)." };
+  const schedule = schedRes.data ?? [];
+  const seasons = (seasonsRes.data ?? []).slice().sort((a: any, b: any) => {
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    return a.start_date < b.start_date ? 1 : -1;
+  });
+  const season = seasons[0] ?? null;
+  const seasonId = season?.id ?? null;
+  const exceptions = excRes.data ?? [];
+
+  let services = schedule
+    .filter((r: any) =>
+      (r.season_id ?? null) === seasonId &&
+      r.is_open && r.opening_time && r.closing_time,
+    )
+    .map((r: any) => ({ ...r }));
+
+  let source: "exception" | "season" | "base" = season ? "season" : "base";
+
+  for (const ex of exceptions as any[]) {
+    source = "exception";
+    const affected: Array<"lunch" | "dinner"> =
+      ex.service_period === "lunch" ? ["lunch"]
+      : ex.service_period === "dinner" ? ["dinner"]
+      : ["lunch", "dinner"];
+
+    if (ex.kind === "closed" || ex.kind === "private_event") {
+      services = services.filter((s: any) => !affected.includes(s.service_period));
+    } else if (ex.kind === "special_hours" || ex.kind === "extra_service") {
+      for (const p of affected) {
+        if (!ex.start_time || !ex.end_time) continue;
+        services = services.filter((s: any) => s.service_period !== p);
+        services.push({
+          id: `exception-${ex.id}-${p}`,
+          restaurant_id: ex.restaurant_id,
+          day_of_week: dow,
+          is_open: true,
+          opening_time: ex.start_time,
+          closing_time: ex.end_time,
+          service_name: ex.reason ?? (p === "lunch" ? "Mediodía" : "Noche"),
+          max_guests_per_slot: ex.max_guests_per_slot,
+          max_reservations_per_slot: ex.max_reservations_per_slot,
+          slot_duration_minutes: ex.slot_duration_minutes ?? 30,
+          booking_mode: ex.booking_mode ?? "slots",
+          shift_times: ex.shift_times,
+          service_period: p,
+          season_id: null,
+        });
+      }
+    }
   }
-  const openServices = (schedule ?? []).filter((s: any) => s.is_open);
-  if (openServices.length === 0) {
-    return { ok: false, error: "closed_day", message: "El restaurante está cerrado ese día de la semana." };
+
+  services.sort((a: any, b: any) => (a.opening_time < b.opening_time ? -1 : 1));
+  return { services, source, seasonId, season };
+}
+
+async function validateSlot(restaurantId: string, date: string, time: string) {
+  const { services, source } = await getEffectiveServices(restaurantId, date);
+  if (services.length === 0) {
+    return {
+      ok: false,
+      error: source === "exception" ? "date_blocked" : "closed_day",
+      message: source === "exception"
+        ? "El restaurante no acepta reservas ese día (fecha bloqueada o evento privado)."
+        : "El restaurante está cerrado ese día.",
+    };
   }
   const t = time.slice(0, 5);
-  const inService = openServices.some((s: any) => {
+  const inService = services.some((s: any) => {
     const open = (s.opening_time ?? "").slice(0, 5);
     const close = (s.closing_time ?? "").slice(0, 5);
     return open && close && t >= open && t <= close;
@@ -73,7 +140,7 @@ async function validateSlot(restaurantId: string, date: string, time: string) {
       ok: false,
       error: "out_of_service_hours",
       message: "La hora solicitada está fuera del horario de servicio.",
-      services: openServices.map((s: any) => ({
+      services: services.map((s: any) => ({
         service_name: s.service_name,
         opening_time: s.opening_time,
         closing_time: s.closing_time,
@@ -110,27 +177,27 @@ async function createReservation(p: Payload) {
 
 async function checkAvailability(p: Payload) {
   if (!p.restaurant_id || !p.date) return json({ ok: false, error: "missing_fields" }, 400);
-  const day = dayOfWeekFromISO(p.date);
 
-  const [{ data: schedule }, { data: blocked }, { data: reservations }] = await Promise.all([
-    supabase.from("restaurant_schedule").select("*").eq("restaurant_id", p.restaurant_id).eq("day_of_week", day),
-    supabase.from("blocked_dates").select("*").eq("restaurant_id", p.restaurant_id).eq("blocked_date", p.date),
-    supabase
-      .from("reservations")
-      .select("reservation_time, party_size, status")
-      .eq("restaurant_id", p.restaurant_id)
-      .eq("reservation_date", p.date)
-      .not("status", "in", "(cancelled,no_show)"),
-  ]);
+  const { services: openServices, source, season } = await getEffectiveServices(p.restaurant_id, p.date);
 
-  const isBlocked = (blocked?.length ?? 0) > 0;
-  if (isBlocked) {
-    return json({ ok: true, date: p.date, available: false, reason: "date_blocked", message: "El restaurante no acepta reservas ese día (fecha bloqueada)." });
-  }
+  const { data: reservations } = await supabase
+    .from("reservations")
+    .select("reservation_time, party_size, status")
+    .eq("restaurant_id", p.restaurant_id)
+    .eq("reservation_date", p.date)
+    .not("status", "in", "(cancelled,no_show)");
 
-  const openServices = (schedule ?? []).filter((s: any) => s.is_open);
   if (openServices.length === 0) {
-    return json({ ok: true, date: p.date, available: false, reason: "closed_day", message: "El restaurante está cerrado ese día de la semana." });
+    return json({
+      ok: true,
+      date: p.date,
+      available: false,
+      reason: source === "exception" ? "date_blocked" : "closed_day",
+      message: source === "exception"
+        ? "El restaurante no acepta reservas ese día (fecha bloqueada o evento privado)."
+        : "El restaurante está cerrado ese día.",
+      source,
+    });
   }
 
   // If time is provided, validate it falls within open service hours
@@ -163,6 +230,8 @@ async function checkAvailability(p: Payload) {
     date: p.date,
     available: true,
     services: openServices,
+    source,
+    season: season ? { id: season.id, name: season.name } : null,
     existing_reservations: reservations ?? [],
   });
 }
