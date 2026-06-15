@@ -593,39 +593,30 @@ export function ReservationDrawer({
           )}
 
           <section className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación</h3>
-            <div className="space-y-1.5">
-              <Label>Zona o mesa</Label>
-              <Select value={v.table_id ?? "none"} onValueChange={(x) => setV({ ...v, table_id: x === "none" ? null : x })}>
-                <SelectTrigger>
-                  <span className="truncate">
-                    {v.table_id && v.table_id !== "none"
-                      ? (() => {
-                          const table = tables.find((t) => t.id === v.table_id);
-                          if (!table) return "Sin asignar";
-                          const zone = zones.find((z) => z.id === table.zone_id);
-                          return zone ? `${table.label} · ${zone.name}` : table.label;
-                        })()
-                      : "Sin asignar"}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin asignar</SelectItem>
-                  {zones.map((z) => {
-                    const zt = tables.filter((t) => t.zone_id === z.id && t.is_active);
-                    if (zt.length === 0) return null;
-                    return (
-                      <div key={z.id}>
-                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{z.name}</div>
-                        {zt.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.label} · {t.min_capacity}-{t.max_capacity} personas</SelectItem>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              {isEdit && v.reservation_date === todayISO && (v.status === "confirmed" || v.status === "pending") && !v.table_id && (() => {
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación de mesa</h3>
+            <TableAssignmentPicker
+              restaurantId={restaurantId}
+              date={v.reservation_date}
+              time={(v.reservation_time ?? "").slice(0, 5)}
+              partySize={partySize}
+              excludeReservationId={initial?.id}
+              value={tableSelection}
+              onChange={setTableSelection}
+              currentAssignmentLabel={(() => {
+                if (tableSelection.kind === "table") {
+                  const t = tables.find((x) => x.id === tableSelection.tableId);
+                  return t ? t.label : null;
+                }
+                if (tableSelection.kind === "combo") {
+                  return tableSelection.tableIds
+                    .map((id) => tables.find((t) => t.id === id)?.label)
+                    .filter(Boolean)
+                    .join(" + ") || null;
+                }
+                return null;
+              })()}
+            />
+            {isEdit && v.reservation_date === todayISO && (v.status === "confirmed" || v.status === "pending") && tableSelection.kind === "none" && (() => {
                 const now = new Date();
                 const [h, m] = (v.reservation_time ?? "00:00").slice(0, 5).split(":").map(Number);
                 const resTime = new Date();
@@ -639,7 +630,6 @@ export function ReservationDrawer({
                   </p>
                 );
               })()}
-            </div>
           </section>
 
           <section className="space-y-3">
