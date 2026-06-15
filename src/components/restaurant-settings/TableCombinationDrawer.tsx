@@ -25,6 +25,8 @@ export function TableCombinationDrawer({
   tables,
   initial,
   existingCombos,
+  lockedZoneId,
+  defaultSelectedTableIds,
   onSaved,
 }: {
   open: boolean;
@@ -34,6 +36,8 @@ export function TableCombinationDrawer({
   tables: RestaurantTable[];
   initial: ExistingCombo | null;
   existingCombos: ExistingCombo[];
+  lockedZoneId?: string;
+  defaultSelectedTableIds?: string[];
   onSaved: () => void;
 }) {
   const [zoneId, setZoneId] = useState<string>("");
@@ -62,8 +66,8 @@ export function TableCombinationDrawer({
       setIsActive(initial.combination.is_active);
       setNotes(initial.combination.internal_notes ?? "");
     } else {
-      setZoneId("");
-      setSelected(new Set());
+      setZoneId(lockedZoneId ?? "");
+      setSelected(new Set(defaultSelectedTableIds ?? []));
       setName("");
       setNameTouched(false);
       setMinCap("");
@@ -73,7 +77,7 @@ export function TableCombinationDrawer({
       setIsActive(true);
       setNotes("");
     }
-  }, [open, initial]);
+  }, [open, initial, lockedZoneId, defaultSelectedTableIds]);
 
   const zoneTables = useMemo(
     () =>
@@ -232,7 +236,7 @@ export function TableCombinationDrawer({
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           <div className="space-y-1.5">
             <Label>Zona <span className="text-terracotta">*</span></Label>
-            <Select value={zoneId} onValueChange={onZoneChange}>
+            <Select value={zoneId} onValueChange={onZoneChange} disabled={!!lockedZoneId && !initial}>
               <SelectTrigger><SelectValue placeholder="Selecciona una zona" /></SelectTrigger>
               <SelectContent>
                 {activeZones.length === 0 && (

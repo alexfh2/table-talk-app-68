@@ -1,18 +1,24 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { Zone, RestaurantTable } from "@/lib/types";
+import type { Zone, RestaurantTable, TableCombination } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Trash2, Wand2 } from "lucide-react";
+import { Plus, Trash2, Wand2, Link2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { TableCombinationsPanel } from "./TableCombinationsPanel";
+import { TableCombinationDrawer } from "./TableCombinationDrawer";
+import { TableDetailDrawer } from "./TableDetailDrawer";
+
+type ComboRow = {
+  combination: TableCombination;
+  tableIds: string[];
+};
 
 const DEMO_ZONES = [
   { name: "Interior", count: 8, min: 2, max: 6, prefix: "I" },
@@ -24,6 +30,18 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [saving, setSaving] = useState(false);
+  const [combos, setCombos] = useState<ComboRow[]>([]);
+  const [comboDrawer, setComboDrawer] = useState<{
+    open: boolean;
+    zoneId?: string;
+    initial: ComboRow | null;
+    defaultSelectedTableIds?: string[];
+  }>({ open: false, initial: null });
+  const [tableDrawer, setTableDrawer] = useState<{ open: boolean; tableId: string | null }>({
+    open: false,
+    tableId: null,
+  });
+  const [confirmDeleteCombo, setConfirmDeleteCombo] = useState<ComboRow | null>(null);
 
   async function reload() {
     const [{ data: z }, { data: t }] = await Promise.all([
@@ -32,9 +50,38 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
     ]);
     setZones((z as Zone[]) ?? []);
     setTables((t as RestaurantTable[]) ?? []);
+    await reloadCombos();
   }
 
-  useEffect(() => { if (restaurantId) reload(); }, [restaurantId]);
+  async function reloadCombos() {
+    const { data: combosData } = await supabase
+      .from("table_combinations")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .order("created_at", { ascending: true });
+    const ids = (combosData ?? []).map((c: any) => c.id);
+    const memberMap = new Map<string, string[]>();
+    if (ids.length > 0) {
+      const { data: members } = await supabase
+        .from("table_combination_tables")
+        .select("combination_id, table_id, sort_order")
+        .in("combination_id", ids)
+        .order("sort_order", { ascending: true });
+      for (const m of (members ?? []) as any[]) {
+        const arr = memberMap.get(m.combination_id) ?? [];
+        arr.push(m.table_id);
+        memberMap.set(m.combination_id, arr);
+      }
+    }
+    setCombos(
+      ((combosData ?? []) as TableCombination[]).map((c) => ({
+        combination: c,
+        tableIds: memberMap.get(c.id) ?? [],
+      })),
+    );
+  }
+
+  useEffect(() => { if (restaurantId) reload(); /* eslint-disable-next-line */ }, [restaurantId]);
 
   async function addZone() {
     const { data, error } = await supabase.from("restaurant_zones").insert({
@@ -84,6 +131,17 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
     const { error } = await supabase.from("restaurant_tables").delete().eq("id", id);
     if (error) return toast.error(error.message);
     setTables((p) => p.filter(t => t.id !== id));
+    reloadCombos();
+  }
+
+  async function deleteCombo(row: ComboRow) {
+    const { error } = await supabase
+      .from("table_combinations")
+      .delete()
+      .eq("id", row.combination.id);
+    if (error) return toast.error(error.message);
+    toast.success("Combinación eliminada.");
+    reloadCombos();
   }
 
   async function saveAll() {
@@ -114,6 +172,18 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
     toast.success("Mapa de mesas demo generado");
     reload();
   }
+
+  function combosForZone(zoneId: string) {
+    return combos.filter((c) => c.combination.zone_id === zoneId);
+  }
+  function combosForTable(tableId: string) {
+    return combos.filter((c) => c.tableIds.includes(tableId));
+  }
+
+  const activeTable =
+    tableDrawer.tableId ? tables.find((t) => t.id === tableDrawer.tableId) ?? null : null;
+  const activeTableZone =
+    activeTable ? zones.find((z) => z.id === activeTable.zone_id) ?? null : null;
 
   return (
     <div className="space-y-4">
@@ -157,6 +227,7 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
       {zones.map(z => {
         const zt = tables.filter(t => t.zone_id === z.id);
         const total = zt.reduce((s, t) => s + (t.max_capacity ?? 0), 0);
+        const zoneCombos = combosForZone(z.id);
         return (
           <Card key={z.id}>
             <CardHeader className="flex-row items-center justify-between space-y-0 pb-3 gap-2">
@@ -189,21 +260,130 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
             </CardHeader>
             <CardContent className="space-y-2">
               {zt.length === 0 && <p className="text-sm text-muted-foreground">Sin mesas en esta zona.</p>}
-              {zt.map(t => (
-                <div key={t.id} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end border rounded-lg p-3">
-                  <div className="space-y-1.5"><Label className="text-xs">Etiqueta</Label><Input value={t.label} onChange={e => patchTable(t.id, { label: e.target.value })} /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">Mín. personas</Label><Input type="number" min={1} value={t.min_capacity} onChange={e => patchTable(t.id, { min_capacity: Number(e.target.value) })} /></div>
-                  <div className="space-y-1.5"><Label className="text-xs">Máx. personas</Label><Input type="number" min={1} value={t.max_capacity} onChange={e => patchTable(t.id, { max_capacity: Number(e.target.value) })} /></div>
-                  <div className="space-y-1.5 md:col-span-2"><Label className="text-xs">Notas</Label><Input value={t.internal_notes ?? ""} onChange={e => patchTable(t.id, { internal_notes: e.target.value })} placeholder="Junto a ventana…" /></div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <Switch checked={t.is_active} onCheckedChange={c => patchTable(t.id, { is_active: c })} />
-                      <span className="text-xs">Activa</span>
+              {zt.map(t => {
+                const tCombos = combosForTable(t.id);
+                let indicator: string | null = null;
+                if (tCombos.length === 1) {
+                  const partner = tCombos[0].tableIds
+                    .filter((id) => id !== t.id)
+                    .map((id) => tables.find((x) => x.id === id)?.label)
+                    .filter(Boolean)
+                    .join(" + ");
+                  indicator = partner ? `↔ ${partner}` : null;
+                } else if (tCombos.length > 1) {
+                  indicator = `↔ ${tCombos.length} combinaciones`;
+                }
+                return (
+                  <div key={t.id} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end border rounded-lg p-3">
+                    <div className="space-y-1.5 md:col-span-1">
+                      <Label className="text-xs">Etiqueta</Label>
+                      <Input value={t.label} onChange={e => patchTable(t.id, { label: e.target.value })} />
+                      <button
+                        type="button"
+                        onClick={() => setTableDrawer({ open: true, tableId: t.id })}
+                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5"
+                      >
+                        {indicator ?? "Ver detalle"}
+                      </button>
                     </div>
-                    <Button size="icon" variant="ghost" onClick={() => deleteTable(t.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    <div className="space-y-1.5"><Label className="text-xs">Mín. personas</Label><Input type="number" min={1} value={t.min_capacity} onChange={e => patchTable(t.id, { min_capacity: Number(e.target.value) })} /></div>
+                    <div className="space-y-1.5"><Label className="text-xs">Máx. personas</Label><Input type="number" min={1} value={t.max_capacity} onChange={e => patchTable(t.id, { max_capacity: Number(e.target.value) })} /></div>
+                    <div className="space-y-1.5 md:col-span-2"><Label className="text-xs">Notas</Label><Input value={t.internal_notes ?? ""} onChange={e => patchTable(t.id, { internal_notes: e.target.value })} placeholder="Junto a ventana…" /></div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Switch checked={t.is_active} onCheckedChange={c => patchTable(t.id, { is_active: c })} />
+                        <span className="text-xs">Activa</span>
+                      </div>
+                      <Button size="icon" variant="ghost" onClick={() => deleteTable(t.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                    </div>
                   </div>
+                );
+              })}
+
+              {/* Combinaciones de la zona */}
+              <div className="pt-4 mt-2 border-t border-border space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div>
+                    <p className="text-sm font-medium">Mesas que se pueden unir</p>
+                    <p className="text-xs text-muted-foreground">
+                      Define qué mesas de esta zona pueden juntarse para reservas grandes.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setComboDrawer({ open: true, zoneId: z.id, initial: null })
+                    }
+                    disabled={zt.filter((t) => t.is_active).length < 2}
+                  >
+                    <Link2 className="h-4 w-4 mr-1" /> Crear combinación en esta zona
+                  </Button>
                 </div>
-              ))}
+
+                {zoneCombos.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    Esta zona aún no tiene combinaciones.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    {zoneCombos.map((row) => {
+                      const c = row.combination;
+                      const labels = row.tableIds
+                        .map((id) => tables.find((x) => x.id === id)?.label)
+                        .filter(Boolean) as string[];
+                      const capacity =
+                        c.min_capacity != null
+                          ? `${c.min_capacity}–${c.max_capacity} personas`
+                          : `${c.max_capacity} personas`;
+                      return (
+                        <div
+                          key={c.id}
+                          className="rounded-lg border border-border bg-background/40 p-3 space-y-1.5"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm text-foreground truncate">{c.name}</p>
+                              <p className="text-xs text-muted-foreground">{capacity}</p>
+                            </div>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium border ${
+                                c.is_active
+                                  ? "bg-success/10 text-success border-success/30"
+                                  : "bg-muted text-muted-foreground border-border"
+                              }`}
+                            >
+                              {c.is_active ? "Activa" : "Inactiva"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Mesas: <span className="text-foreground">{labels.join(", ") || "—"}</span>
+                          </p>
+                          <div className="flex items-center justify-end gap-1 pt-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setComboDrawer({ open: true, zoneId: z.id, initial: row })
+                              }
+                            >
+                              <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => setConfirmDeleteCombo(row)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" /> Eliminar
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         );
@@ -215,9 +395,62 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
         </div>
       )}
 
-      {zones.length > 0 && (
-        <TableCombinationsPanel restaurantId={restaurantId} zones={zones} tables={tables} />
-      )}
+      <TableCombinationDrawer
+        open={comboDrawer.open}
+        onOpenChange={(b) => setComboDrawer((d) => ({ ...d, open: b }))}
+        restaurantId={restaurantId}
+        zones={zones}
+        tables={tables}
+        initial={comboDrawer.initial}
+        existingCombos={combos}
+        lockedZoneId={comboDrawer.zoneId}
+        defaultSelectedTableIds={comboDrawer.defaultSelectedTableIds}
+        onSaved={reloadCombos}
+      />
+
+      <TableDetailDrawer
+        open={tableDrawer.open}
+        onOpenChange={(b) => setTableDrawer((d) => ({ ...d, open: b }))}
+        table={activeTable}
+        zone={activeTableZone}
+        tables={tables}
+        combos={combos}
+        onEditCombo={(row) => {
+          setTableDrawer({ open: false, tableId: null });
+          setComboDrawer({ open: true, zoneId: row.combination.zone_id ?? undefined, initial: row });
+        }}
+        onCreateComboWithTable={(t) => {
+          setTableDrawer({ open: false, tableId: null });
+          setComboDrawer({
+            open: true,
+            zoneId: t.zone_id,
+            initial: null,
+            defaultSelectedTableIds: [t.id],
+          });
+        }}
+      />
+
+      <AlertDialog open={!!confirmDeleteCombo} onOpenChange={(b) => !b && setConfirmDeleteCombo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar combinación</AlertDialogTitle>
+            <AlertDialogDescription>
+              ¿Eliminar la combinación "{confirmDeleteCombo?.combination.name}"? Las mesas individuales no se borran.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (confirmDeleteCombo) deleteCombo(confirmDeleteCombo);
+                setConfirmDeleteCombo(null);
+              }}
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 
