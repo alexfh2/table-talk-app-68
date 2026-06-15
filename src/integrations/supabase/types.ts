@@ -580,6 +580,12 @@ export type Database = {
           restaurant_id: string
           sort_order: number
           updated_at: string
+          visual_height: number | null
+          visual_rotation: number
+          visual_shape: string
+          visual_width: number | null
+          visual_x: number | null
+          visual_y: number | null
           zone_id: string
         }
         Insert: {
@@ -593,6 +599,12 @@ export type Database = {
           restaurant_id: string
           sort_order?: number
           updated_at?: string
+          visual_height?: number | null
+          visual_rotation?: number
+          visual_shape?: string
+          visual_width?: number | null
+          visual_x?: number | null
+          visual_y?: number | null
           zone_id: string
         }
         Update: {
@@ -606,6 +618,12 @@ export type Database = {
           restaurant_id?: string
           sort_order?: number
           updated_at?: string
+          visual_height?: number | null
+          visual_rotation?: number
+          visual_shape?: string
+          visual_width?: number | null
+          visual_x?: number | null
+          visual_y?: number | null
           zone_id?: string
         }
         Relationships: []

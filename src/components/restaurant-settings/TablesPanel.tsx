@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TableCombinationDrawer } from "./TableCombinationDrawer";
 import { TableDetailDrawer } from "./TableDetailDrawer";
+import { ZoneFloorPlan } from "./ZoneFloorPlan";
 
 type ComboRow = {
   combination: TableCombination;
@@ -42,6 +43,7 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
     tableId: null,
   });
   const [confirmDeleteCombo, setConfirmDeleteCombo] = useState<ComboRow | null>(null);
+  const [zoneView, setZoneView] = useState<Record<string, "visual" | "list">>({});
 
   async function reload() {
     const [{ data: z }, { data: t }] = await Promise.all([
@@ -259,6 +261,39 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
+              <div className="flex items-center justify-end -mt-1">
+                <div className="inline-flex rounded-md border border-border bg-background p-0.5 text-xs">
+                  {(["visual", "list"] as const).map((v) => {
+                    const active = (zoneView[z.id] ?? "visual") === v;
+                    return (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setZoneView((s) => ({ ...s, [z.id]: v }))}
+                        className={[
+                          "px-2.5 py-1 rounded-[5px] transition-colors",
+                          active
+                            ? "bg-secondary text-foreground font-medium"
+                            : "text-muted-foreground hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        {v === "visual" ? "Vista visual" : "Vista lista"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {(zoneView[z.id] ?? "visual") === "visual" ? (
+                <ZoneFloorPlan
+                  zone={z}
+                  zoneTables={zt}
+                  combos={combos}
+                  onTableClick={(t) => setTableDrawer({ open: true, tableId: t.id })}
+                  onSaved={reload}
+                />
+              ) : (
+                <>
               {zt.length === 0 && <p className="text-sm text-muted-foreground">Sin mesas en esta zona.</p>}
               {zt.map(t => {
                 const tCombos = combosForTable(t.id);
@@ -301,6 +336,8 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
                   </div>
                 );
               })}
+                </>
+              )}
 
               {/* Combinaciones de la zona */}
               <div className="pt-4 mt-2 border-t border-border space-y-3">
