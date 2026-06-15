@@ -279,7 +279,7 @@ async function createReservation(p: Payload) {
     date: p.reservation_date,
     time: p.reservation_time,
     partySize: p.party_size,
-    preferredZone: p.preferred_zone,
+    preferredZone: p.preferred_zone ?? p.zone,
   });
 
   if (assignment.reason === "no_capacity") {
@@ -296,6 +296,14 @@ async function createReservation(p: Payload) {
     ? "⚠ Sin mesa única que encaje. Requiere reasignación manual."
     : null;
 
+  // Merge optional zone + special_requests into customer_notes
+  // (the table has no dedicated columns for them).
+  const extraParts: string[] = [];
+  if (p.customer_notes) extraParts.push(p.customer_notes);
+  if (p.zone || p.preferred_zone) extraParts.push(`Zona preferida: ${p.zone ?? p.preferred_zone}`);
+  if (p.special_requests) extraParts.push(`Peticiones: ${p.special_requests}`);
+  const mergedNotes = extraParts.length ? extraParts.join(" | ") : null;
+
   const { data, error } = await supabase
     .from("reservations")
     .insert({
@@ -305,7 +313,7 @@ async function createReservation(p: Payload) {
       reservation_date: p.reservation_date,
       reservation_time: p.reservation_time,
       party_size: p.party_size,
-      customer_notes: p.customer_notes ?? null,
+      customer_notes: mergedNotes,
       internal_notes: internalNotes,
       table_id: assignment.tableId,
       status,
@@ -353,31 +361,33 @@ async function checkAvailability(p: Payload) {
     .not("status", "in", "(cancelled,no_show)");
 
   if (openServices.length === 0) {
+    const reason = source === "exception" ? "date_blocked" : "closed_day";
+    const message = source === "exception"
+      ? "El restaurante no acepta reservas ese día (fecha bloqueada o evento privado)."
+      : "El restaurante está cerrado ese día.";
     return json({
       ok: true,
       date: p.date,
+      is_open: false,
       available: false,
-      reason: source === "exception" ? "date_blocked" : "closed_day",
-      message: source === "exception"
-        ? "El restaurante no acepta reservas ese día (fecha bloqueada o evento privado)."
-        : "El restaurante está cerrado ese día.",
+      reason,
+      message,
       source,
     });
   }
 
-  // If time is provided, validate it falls within open service hours
+  // If a time is provided, validate it's within service hours (midnight-safe).
   if (p.reservation_time) {
     const t = p.reservation_time.slice(0, 5);
-    const inService = openServices.some((s: any) => {
-      const open = (s.opening_time ?? "").slice(0, 5);
-      const close = (s.closing_time ?? "").slice(0, 5);
-      return open && close && t >= open && t <= close;
-    });
+    const inService = openServices.some((s: any) =>
+      isTimeWithinService(t, (s.opening_time ?? "").slice(0, 5), (s.closing_time ?? "").slice(0, 5)),
+    );
     if (!inService) {
       return json({
         ok: true,
         date: p.date,
         time: p.reservation_time,
+        is_open: true,
         available: false,
         reason: "out_of_service_hours",
         message: "La hora solicitada está fuera del horario de servicio.",
@@ -388,16 +398,115 @@ async function checkAvailability(p: Payload) {
         })),
       });
     }
+
+    // If party_size is also provided, validate capacity via autoAssignTable.
+    if (p.party_size) {
+      const assignment = await autoAssignTable({
+        restaurantId: p.restaurant_id,
+        date: p.date,
+        time: p.reservation_time,
+        partySize: p.party_size,
+        preferredZone: p.preferred_zone ?? p.zone,
+      });
+
+      if (assignment.reason === "no_capacity") {
+        return json({
+          ok: true,
+          date: p.date,
+          time: p.reservation_time,
+          is_open: true,
+          available: false,
+          reason: "no_capacity",
+          message: "No hay capacidad disponible para esa hora.",
+          assignment_preview: {
+            table_id: null,
+            needs_review: false,
+            free_seats: assignment.freeSeats,
+          },
+          source,
+        });
+      }
+
+      if (assignment.needsReview) {
+        return json({
+          ok: true,
+          date: p.date,
+          time: p.reservation_time,
+          is_open: true,
+          available: true,
+          reason: "needs_human_review",
+          message: "Hay plazas suficientes pero ninguna mesa única encaja. La reserva requerirá revisión humana.",
+          assignment_preview: {
+            table_id: null,
+            needs_review: true,
+            free_seats: assignment.freeSeats,
+          },
+          source,
+        });
+      }
+
+      return json({
+        ok: true,
+        date: p.date,
+        time: p.reservation_time,
+        is_open: true,
+        available: true,
+        reason: "available",
+        message: "Hay disponibilidad.",
+        assignment_preview: {
+          table_id: assignment.tableId,
+          table_label: assignment.tableLabel,
+          needs_review: false,
+          free_seats: assignment.freeSeats,
+        },
+        source,
+        season: season ? { id: season.id, name: season.name } : null,
+      });
+    }
   }
 
   return json({
     ok: true,
     date: p.date,
+    is_open: true,
     available: true,
+    reason: "available",
+    message: "El restaurante está abierto.",
     services: openServices,
     source,
     season: season ? { id: season.id, name: season.name } : null,
     existing_reservations: reservations ?? [],
+  });
+}
+
+async function findReservation(p: Payload) {
+  if (!p.restaurant_id) return json({ ok: false, error: "missing_restaurant_id" }, 400);
+  if (!p.customer_name && !p.customer_phone) {
+    return json({ ok: false, error: "missing_search_criteria", message: "Indica customer_name o customer_phone." }, 400);
+  }
+
+  let q = supabase
+    .from("reservations")
+    .select("*")
+    .eq("restaurant_id", p.restaurant_id)
+    .not("status", "in", "(cancelled,no_show)")
+    .order("reservation_date", { ascending: true })
+    .order("reservation_time", { ascending: true });
+
+  if (p.reservation_date) q = q.eq("reservation_date", p.reservation_date);
+  if (p.customer_phone) {
+    const normalized = p.customer_phone.replace(/[^\d+]/g, "");
+    q = q.ilike("customer_phone", `%${normalized}%`);
+  }
+  if (p.customer_name) q = q.ilike("customer_name", `%${p.customer_name}%`);
+
+  const { data, error } = await q;
+  if (error) return json({ ok: false, error: error.message }, 400);
+
+  return json({
+    ok: true,
+    count: data?.length ?? 0,
+    reservations: data ?? [],
   });
 }
 
