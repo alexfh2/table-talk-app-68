@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, List, LayoutGrid } from "lucide-react";
 import {
   getAvailableTableOptions,
   type AvailableTableOptions,
 } from "@/lib/getAvailableTableOptions";
+import { supabase } from "@/integrations/supabase/client";
+import type { RestaurantTable, Zone, TableCombination } from "@/lib/types";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export type TableSelection =
   | { kind: "none" }
@@ -46,6 +53,7 @@ export function TableAssignmentPicker({
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AvailableTableOptions | null>(null);
+  const [view, setView] = useState<"list" | "plan">("list");
 
   const ready = !!(restaurantId && date && time && partySize > 0);
 
@@ -97,6 +105,31 @@ export function TableAssignmentPicker({
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="inline-flex rounded-md border border-border overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setView("list")}
+            className={[
+              "px-2.5 py-1 text-xs inline-flex items-center gap-1.5 transition-colors",
+              view === "list" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
+            ].join(" ")}
+          >
+            <List className="h-3.5 w-3.5" /> Lista
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("plan")}
+            className={[
+              "px-2.5 py-1 text-xs inline-flex items-center gap-1.5 transition-colors border-l border-border",
+              view === "plan" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-muted",
+            ].join(" ")}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" /> Plano
+          </button>
+        </div>
+      </div>
+
       {loading && (
         <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando mesas…
@@ -113,7 +146,17 @@ export function TableAssignmentPicker({
         </div>
       )}
 
-      {result && result.individualTables.length > 0 && (
+      {view === "plan" && (
+        <FloorPlanPicker
+          restaurantId={restaurantId}
+          result={result}
+          partySize={partySize}
+          value={value}
+          onChange={onChange}
+        />
+      )}
+
+      {view === "list" && result && result.individualTables.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Mesas individuales
@@ -136,7 +179,7 @@ export function TableAssignmentPicker({
         </div>
       )}
 
-      {result && result.combinations.length > 0 && (
+      {view === "list" && result && result.combinations.length > 0 && (
         <div className="space-y-1.5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Mesas unidas
@@ -168,7 +211,7 @@ export function TableAssignmentPicker({
         </div>
       )}
 
-      {result && !hasOptions && (
+      {view === "list" && result && !hasOptions && (
         <p className="text-xs text-terracotta">
           No hay mesas disponibles para esta hora.
         </p>
@@ -240,4 +283,263 @@ export function persistFromSelection(selection: TableSelection): {
   if (selection.kind === "table") return { tableId: selection.tableId, tableIds: [selection.tableId] };
   const first = selection.tableIds[0] ?? null;
   return { tableId: first, tableIds: selection.tableIds };
+}
+
+const DEFAULT_BY_SHAPE: Record<string, { w: number; h: number }> = {
+  round: { w: 11, h: 16 },
+  square: { w: 11, h: 16 },
+  rectangle: { w: 18, h: 11 },
+};
+
+function FloorPlanPicker({
+  restaurantId,
+  result,
+  partySize,
+  value,
+  onChange,
+}: {
+  restaurantId: string;
+  result: AvailableTableOptions | null;
+  partySize: number;
+  value: TableSelection;
+  onChange: (s: TableSelection) => void;
+}) {
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [popoverFor, setPopoverFor] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      supabase.from("restaurant_zones").select("*").eq("restaurant_id", restaurantId).order("sort_order"),
+      supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId),
+    ]).then(([z, t]) => {
+      if (cancelled) return;
+      setZones(((z.data ?? []) as Zone[]).filter((zz) => zz.is_active));
+      setTables((t.data ?? []) as RestaurantTable[]);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId]);
+
+  const availableIndividualIds = useMemo(
+    () => new Set((result?.individualTables ?? []).map((t) => t.id)),
+    [result],
+  );
+  const occupiedIds = useMemo(
+    () => new Set(result?.debug.occupiedTableIds ?? []),
+    [result],
+  );
+
+  /** Combinations available for this slot grouped per member table. */
+  const combosByTable = useMemo(() => {
+    const map = new Map<string, Array<{ comboId: string; tableIds: string[]; label: string; cap: string }>>();
+    for (const c of result?.combinations ?? []) {
+      const ids = c.tables.map((t) => t.id);
+      const entry = {
+        comboId: c.combination.id,
+        tableIds: ids,
+        label: c.tables.map((t) => t.label).join(" + "),
+        cap: `${c.combination.min_capacity ?? 1}–${c.combination.max_capacity} personas`,
+      };
+      for (const id of ids) {
+        const arr = map.get(id) ?? [];
+        arr.push(entry);
+        map.set(id, arr);
+      }
+    }
+    return map;
+  }, [result]);
+
+  const selectedTableIds = useMemo(() => {
+    if (value.kind === "table") return new Set([value.tableId]);
+    if (value.kind === "combo") return new Set(value.tableIds);
+    return new Set<string>();
+  }, [value]);
+
+  if (loading) {
+    return (
+      <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Cargando plano…
+      </p>
+    );
+  }
+
+  const zonesToShow = zones.filter((z) => tables.some((t) => t.zone_id === z.id));
+  if (zonesToShow.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">No hay zonas configuradas.</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      {zonesToShow.map((zone) => {
+        const zTables = tables.filter((t) => t.zone_id === zone.id);
+        return (
+          <div key={zone.id} className="space-y-1.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {zone.name}
+            </p>
+            <div
+              className="relative w-full rounded-2xl border border-border bg-[hsl(var(--secondary))] overflow-hidden"
+              style={{
+                aspectRatio: "16 / 10",
+                backgroundImage:
+                  "radial-gradient(circle at 1px 1px, hsl(var(--muted-foreground) / 0.18) 1px, transparent 0)",
+                backgroundSize: "22px 22px",
+              }}
+            >
+              {zTables.map((t, idx) => {
+                const shape = (t.visual_shape ?? "round") as "round" | "square" | "rectangle";
+                const def = DEFAULT_BY_SHAPE[shape];
+                const w = Number(t.visual_width ?? def.w);
+                const h = Number(t.visual_height ?? def.h);
+                const x = t.visual_x != null ? Number(t.visual_x) : 15 + (idx % 5) * 17;
+                const y = t.visual_y != null ? Number(t.visual_y) : 20 + Math.floor(idx / 5) * 30;
+                const rot = Number(t.visual_rotation ?? 0);
+                const radius =
+                  shape === "round" ? "9999px" : shape === "square" ? "10px" : "8px";
+
+                const inactive = !t.is_active;
+                const occupied = occupiedIds.has(t.id);
+                const isAvailable = availableIndividualIds.has(t.id);
+                const tCombos = combosByTable.get(t.id) ?? [];
+                const isSelected = selectedTableIds.has(t.id);
+                const fitsCapacity =
+                  partySize >= t.min_capacity && partySize <= t.max_capacity;
+                const isPartOfAvailableCombo = tCombos.length > 0;
+                const clickable = !inactive && !occupied && (isAvailable || isPartOfAvailableCombo);
+
+                // Color state
+                let stateClass = "";
+                if (isSelected) {
+                  stateClass = "border-primary bg-primary/15 ring-2 ring-primary/40 text-primary";
+                } else if (inactive) {
+                  stateClass = "border-dashed border-border bg-muted/40 text-muted-foreground opacity-60";
+                } else if (occupied) {
+                  stateClass = "border-terracotta/40 bg-terracotta/10 text-terracotta";
+                } else if (isAvailable) {
+                  stateClass = "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 hover:border-primary";
+                } else if (isPartOfAvailableCombo) {
+                  stateClass = "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:border-primary";
+                } else if (!fitsCapacity) {
+                  stateClass = "border-border bg-card text-muted-foreground opacity-70";
+                } else {
+                  stateClass = "border-border bg-card text-muted-foreground";
+                }
+
+                const buttonContent = (
+                  <button
+                    type="button"
+                    disabled={!clickable}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!clickable) return;
+                      if (tCombos.length > 0) {
+                        // open popover to choose individual vs combo(s)
+                        setPopoverFor(t.id);
+                      } else if (isAvailable) {
+                        onChange({ kind: "table", tableId: t.id });
+                      }
+                    }}
+                    className={[
+                      "absolute flex flex-col items-center justify-center text-center select-none transition-colors border",
+                      clickable ? "cursor-pointer" : "cursor-not-allowed",
+                      stateClass,
+                    ].join(" ")}
+                    style={{
+                      left: `${x}%`,
+                      top: `${y}%`,
+                      width: `${w}%`,
+                      height: `${h}%`,
+                      minWidth: 44,
+                      minHeight: 44,
+                      borderRadius: radius,
+                      transform: `translate(-50%, -50%) rotate(${rot}deg)`,
+                    }}
+                    aria-label={`Mesa ${t.label}`}
+                  >
+                    <span className="text-sm font-semibold leading-none">{t.label}</span>
+                    <span className="text-[10px] mt-0.5 opacity-80">
+                      {t.min_capacity}–{t.max_capacity}
+                    </span>
+                  </button>
+                );
+
+                if (tCombos.length === 0) return <div key={t.id}>{buttonContent}</div>;
+
+                return (
+                  <Popover
+                    key={t.id}
+                    open={popoverFor === t.id}
+                    onOpenChange={(o) => setPopoverFor(o ? t.id : null)}
+                  >
+                    <PopoverTrigger asChild>{buttonContent}</PopoverTrigger>
+                    <PopoverContent className="w-64 p-2 space-y-1" align="center">
+                      <p className="text-[11px] uppercase tracking-wider text-muted-foreground px-2 pt-1">
+                        Opciones para {t.label}
+                      </p>
+                      {isAvailable && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onChange({ kind: "table", tableId: t.id });
+                            setPopoverFor(null);
+                          }}
+                          className="w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                        >
+                          <div className="font-medium">Solo {t.label}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {t.min_capacity}–{t.max_capacity} personas
+                          </div>
+                        </button>
+                      )}
+                      {tCombos.map((c) => (
+                        <button
+                          key={c.comboId}
+                          type="button"
+                          onClick={() => {
+                            onChange({
+                              kind: "combo",
+                              combinationId: c.comboId,
+                              tableIds: c.tableIds,
+                            });
+                            setPopoverFor(null);
+                          }}
+                          className="w-full text-left rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+                        >
+                          <div className="font-medium">Usar {c.label}</div>
+                          <div className="text-xs text-muted-foreground">{c.cap}</div>
+                        </button>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+        <LegendDot className="bg-emerald-500/60" label="Disponible" />
+        <LegendDot className="bg-amber-500/60" label="Disponible unida" />
+        <LegendDot className="bg-terracotta/60" label="Ocupada" />
+        <LegendDot className="bg-muted-foreground/40" label="No válida / inactiva" />
+        <LegendDot className="bg-primary" label="Seleccionada" />
+      </div>
+    </div>
+  );
+}
+
+function LegendDot({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={["inline-block h-2.5 w-2.5 rounded-full", className].join(" ")} />
+      {label}
+    </span>
+  );
 }
