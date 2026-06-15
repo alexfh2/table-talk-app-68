@@ -470,6 +470,13 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
             defaultSelectedTableIds: [t.id],
           });
         }}
+        onUpdateVisual={(id, patch) => {
+          const updated = tables.find((t) => t.id === id);
+          if (!updated) return;
+          const next = { ...updated, ...patch };
+          patchTable(id, patch);
+          saveTable(next);
+        }}
       />
 
       <AlertDialog open={!!confirmDeleteCombo} onOpenChange={(b) => !b && setConfirmDeleteCombo(null)}>
