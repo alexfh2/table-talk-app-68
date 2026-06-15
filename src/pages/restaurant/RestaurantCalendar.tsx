@@ -10,6 +10,7 @@ import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/e
 import { supabase } from "@/integrations/supabase/client";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { parseReviewReasonsFromNotes } from "@/lib/reservationRules";
+import { getReservationsTableMap, effectiveTableIds, formatTableAssignment } from "@/lib/reservationTables";
 import { addDays, format, startOfWeek, isSameDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { Plus, ChevronLeft, ChevronRight, AlertCircle, ExternalLink } from "lucide-react";
@@ -110,6 +111,7 @@ export default function RestaurantCalendar() {
   const [items, setItems] = useState<Reservation[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [tableMap, setTableMap] = useState<Map<string, string[]>>(new Map());
   const [ctx, setCtx] = useState<ScheduleContext>({ schedule: [], seasons: [], exceptions: [] });
   const [drawer, setDrawer] = useState<{ open: boolean; mode: DrawerMode; initial: Reservation | null }>({
     open: false, mode: "create", initial: null,
@@ -117,19 +119,21 @@ export default function RestaurantCalendar() {
 
   function reload() {
     if (!rid) return;
-    listReservations(rid).then(setItems);
+    listReservations(rid).then(async (rs) => {
+      setItems(rs);
+      setTableMap(await getReservationsTableMap(rs.map((r) => r.id)));
+    });
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid).then(({ data }) => setTables((data ?? []) as RestaurantTable[]));
     supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid).then(({ data }) => setZones((data ?? []) as Zone[]));
     loadScheduleContext(rid).then(setCtx).catch(() => setCtx({ schedule: [], seasons: [], exceptions: [] }));
   }
   useEffect(reload, [rid]);
 
-  function tableLabel(id: string | null): string | null {
-    if (!id) return null;
-    const t = tables.find((x) => x.id === id);
-    if (!t) return null;
-    const z = zones.find((z) => z.id === t.zone_id);
-    return z ? `${t.label} · ${z.name}` : t.label;
+  function tableLabel(reservation: Reservation): string | null {
+    const ids = effectiveTableIds(reservation.id, reservation.table_id, tableMap);
+    const f = formatTableAssignment(ids, tables, zones);
+    if (!f) return null;
+    return f.zone ? `${f.label} · ${f.zone}` : f.label;
   }
 
   function openReservation(r: Reservation) {
