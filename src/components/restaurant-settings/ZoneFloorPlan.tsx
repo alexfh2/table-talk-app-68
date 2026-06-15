@@ -593,6 +593,14 @@ export function ZoneFloorPlan({
           );
         })()
       )}
+
+      <ZoneElementDetailDrawer
+        open={!!elementDrawerId}
+        onOpenChange={(b) => !b && setElementDrawerId(null)}
+        element={activeElement}
+        onUpdate={updateElement}
+        onDelete={deleteElement}
+      />
     </div>
   );
 }
