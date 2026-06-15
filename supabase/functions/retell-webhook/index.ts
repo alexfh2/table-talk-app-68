@@ -41,6 +41,8 @@ interface Payload {
   date?: string;
   // lookup by phone
   phone?: string;
+  // voice-only: preferred zone name (case-insensitive)
+  preferred_zone?: string;
 }
 
 function dayOfWeekFromISO(d: string): number {
@@ -169,6 +171,7 @@ async function autoAssignTable(opts: {
   time: string;
   partySize: number;
   slotMinutes?: number;
+  preferredZone?: string;
 }): Promise<AutoAssign> {
   const time = opts.time.slice(0, 5);
   const window = opts.slotMinutes ?? DEFAULT_SLOT_MIN;
@@ -176,7 +179,7 @@ async function autoAssignTable(opts: {
   const [{ data: tables }, { data: reservations }] = await Promise.all([
     supabase
       .from("restaurant_tables")
-      .select("id, label, min_capacity, max_capacity, sort_order")
+      .select("id, label, min_capacity, max_capacity, sort_order, zone_id, restaurant_zones(name)")
       .eq("restaurant_id", opts.restaurantId)
       .eq("is_active", true),
     supabase
@@ -189,6 +192,7 @@ async function autoAssignTable(opts: {
 
   const activeTables = (tables ?? []) as Array<{
     id: string; label: string; min_capacity: number; max_capacity: number; sort_order: number | null;
+    zone_id: string; restaurant_zones: { name: string } | null;
   }>;
 
   const occupied = new Set<string>();
@@ -200,13 +204,23 @@ async function autoAssignTable(opts: {
   const free = activeTables.filter((t) => !occupied.has(t.id));
   const freeSeats = free.reduce((s, t) => s + (t.max_capacity ?? 0), 0);
 
+  const preferred = opts.preferredZone?.trim().toLowerCase() ?? "";
+  const inZone = (t: typeof activeTables[number]) =>
+    preferred ? (t.restaurant_zones?.name ?? "").trim().toLowerCase() === preferred : false;
+
   const candidates = free
     .filter((t) => t.max_capacity >= opts.partySize)
-    .sort((a, b) =>
-      a.max_capacity !== b.max_capacity
-        ? a.max_capacity - b.max_capacity
-        : (a.sort_order ?? 0) - (b.sort_order ?? 0),
-    );
+    .sort((a, b) => {
+      // 1) Preferred zone first
+      if (preferred) {
+        const az = inZone(a) ? 0 : 1;
+        const bz = inZone(b) ? 0 : 1;
+        if (az !== bz) return az - bz;
+      }
+      // 2) Smallest table that fits
+      if (a.max_capacity !== b.max_capacity) return a.max_capacity - b.max_capacity;
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+    });
 
   if (candidates.length > 0) {
     const t = candidates[0];
@@ -231,6 +245,7 @@ async function createReservation(p: Payload) {
     date: p.reservation_date,
     time: p.reservation_time,
     partySize: p.party_size,
+    preferredZone: p.preferred_zone,
   });
 
   if (assignment.reason === "no_capacity") {
