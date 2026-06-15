@@ -401,6 +401,42 @@ export type Database = {
           },
         ]
       }
+      reservation_tables: {
+        Row: {
+          created_at: string
+          id: string
+          reservation_id: string
+          table_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          reservation_id: string
+          table_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          reservation_id?: string
+          table_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_tables_reservation_id_fkey"
+            columns: ["reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_tables_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "restaurant_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservations: {
         Row: {
           channel: Database["public"]["Enums"]["reservation_channel"]
@@ -692,6 +728,96 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      table_combination_tables: {
+        Row: {
+          combination_id: string
+          id: string
+          sort_order: number
+          table_id: string
+        }
+        Insert: {
+          combination_id: string
+          id?: string
+          sort_order?: number
+          table_id: string
+        }
+        Update: {
+          combination_id?: string
+          id?: string
+          sort_order?: number
+          table_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_combination_tables_combination_id_fkey"
+            columns: ["combination_id"]
+            isOneToOne: false
+            referencedRelation: "table_combinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_combination_tables_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "restaurant_tables"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      table_combinations: {
+        Row: {
+          created_at: string
+          id: string
+          internal_notes: string | null
+          is_active: boolean
+          max_capacity: number
+          min_capacity: number | null
+          name: string
+          restaurant_id: string
+          updated_at: string
+          zone_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          internal_notes?: string | null
+          is_active?: boolean
+          max_capacity: number
+          min_capacity?: number | null
+          name: string
+          restaurant_id: string
+          updated_at?: string
+          zone_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          internal_notes?: string | null
+          is_active?: boolean
+          max_capacity?: number
+          min_capacity?: number | null
+          name?: string
+          restaurant_id?: string
+          updated_at?: string
+          zone_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_combinations_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_combinations_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "restaurant_zones"
             referencedColumns: ["id"]
           },
         ]
