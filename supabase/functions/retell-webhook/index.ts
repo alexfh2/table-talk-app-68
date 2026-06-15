@@ -517,31 +517,113 @@ async function findReservation(p: Payload) {
 
 async function updateReservation(p: Payload) {
   if (!p.reservation_id) return json({ ok: false, error: "missing_reservation_id" }, 400);
-  if (p.reservation_date || p.reservation_time) {
-    // Need both effective date & time to validate; fetch current if one is missing
-    let date = p.reservation_date;
-    let time = p.reservation_time;
-    let restaurantId = p.restaurant_id;
-    if (!date || !time || !restaurantId) {
-      const { data: cur } = await supabase
-        .from("reservations")
-        .select("restaurant_id, reservation_date, reservation_time")
-        .eq("id", p.reservation_id)
-        .maybeSingle();
-      date = date ?? cur?.reservation_date;
-      time = time ?? cur?.reservation_time;
-      restaurantId = restaurantId ?? cur?.restaurant_id;
-    }
-    if (date && time && restaurantId) {
-      const v = await validateSlot(restaurantId, date, time);
-      if (!v.ok) return json(v, 409);
-    }
-  }
+
+  // Load current reservation
+  const { data: cur, error: curErr } = await supabase
+    .from("reservations")
+    .select("*")
+    .eq("id", p.reservation_id)
+    .maybeSingle();
+  if (curErr) return json({ ok: false, error: curErr.message }, 400);
+  if (!cur) return json({ ok: false, error: "reservation_not_found" }, 404);
+
+  const restaurantId = (p.restaurant_id ?? cur.restaurant_id) as string;
+  const newZone = p.preferred_zone ?? p.zone;
+
+  const dateChanged = !!p.reservation_date && p.reservation_date !== cur.reservation_date;
+  const timeChanged = !!p.reservation_time && p.reservation_time.slice(0, 5) !== String(cur.reservation_time).slice(0, 5);
+  const partyChanged = !!p.party_size && p.party_size !== cur.party_size;
+  const zoneChanged = !!newZone;
+
   const patch: Record<string, unknown> = { status: "modified" };
-  if (p.reservation_date) patch.reservation_date = p.reservation_date;
-  if (p.reservation_time) patch.reservation_time = p.reservation_time;
-  if (p.party_size) patch.party_size = p.party_size;
   if (p.customer_notes !== undefined) patch.customer_notes = p.customer_notes;
+
+  if (dateChanged || timeChanged || partyChanged || zoneChanged) {
+    const date = (p.reservation_date ?? cur.reservation_date) as string;
+    const time = (p.reservation_time ?? cur.reservation_time) as string;
+    const partySize = (p.party_size ?? cur.party_size) as number;
+
+    // Validate service hours
+    const v = await validateSlot(restaurantId, date, time);
+    if (!v.ok) return json(v, 409);
+
+    // Reassign table, excluding this reservation from occupancy
+    const assignment = await autoAssignTable({
+      restaurantId,
+      date,
+      time,
+      partySize,
+      preferredZone: newZone,
+      excludeReservationId: p.reservation_id,
+    });
+
+    if (assignment.reason === "no_capacity") {
+      return json({
+        ok: false,
+        error: "no_capacity",
+        reason: "no_capacity",
+        message: "No hay capacidad disponible para esa hora.",
+        free_seats: assignment.freeSeats,
+      }, 409);
+    }
+
+    patch.reservation_date = date;
+    patch.reservation_time = time;
+    patch.party_size = partySize;
+    patch.table_id = assignment.tableId;
+    patch.status = assignment.needsReview ? "requires_human" : "modified";
+
+    // Merge zone/special_requests into customer_notes if provided
+    if (newZone || p.special_requests || p.customer_notes !== undefined) {
+      const extra: string[] = [];
+      if (p.customer_notes !== undefined) {
+        if (p.customer_notes) extra.push(p.customer_notes);
+      } else if (cur.customer_notes) {
+        extra.push(cur.customer_notes);
+      }
+      if (newZone) extra.push(`Zona preferida: ${newZone}`);
+      if (p.special_requests) extra.push(`Peticiones: ${p.special_requests}`);
+      patch.customer_notes = extra.length ? extra.join(" | ") : null;
+    }
+
+    const { data, error } = await supabase
+      .from("reservations")
+      .update(patch)
+      .eq("id", p.reservation_id)
+      .select()
+      .single();
+    if (error) return json({ ok: false, error: error.message }, 400);
+
+    if (assignment.needsReview && data) {
+      await supabase.from("human_handoff_requests").insert({
+        restaurant_id: restaurantId,
+        reservation_id: data.id,
+        customer_name: data.customer_name,
+        customer_phone: data.customer_phone,
+        source_channel: "future_voice",
+        reason: "table_auto_assignment_failed",
+        customer_message: `Modificación de reserva: ${partySize} personas el ${date} a las ${time}. Reasignar mesa manualmente.`,
+        status: "pending",
+      });
+      return json({
+        ok: true,
+        reservation: data,
+        reason: "needs_human_review",
+        assignment: { table_id: null, needs_review: true, free_seats: assignment.freeSeats },
+      });
+    }
+
+    return json({
+      ok: true,
+      reservation: data,
+      reason: "assigned",
+      assignment: {
+        table_id: assignment.tableId,
+        needs_review: false,
+        ...(("tableLabel" in assignment) ? { table_label: assignment.tableLabel } : {}),
+      },
+    });
+  }
 
   const { data, error } = await supabase
     .from("reservations")
