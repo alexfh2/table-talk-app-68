@@ -679,17 +679,31 @@ export default function RestaurantDashboard() {
             </div>
           </div>
 
-          {/* Occupancy */}
-          {filter === "all" && (lunchSvc || dinnerSvc) && <DayStatusBlock />}
-          {filter === "lunch" && lunchSvc && (
-            <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
-          )}
-          {filter === "dinner" && dinnerSvc && (
-            <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
-          )}
+          {view === "map" ? (
+            <TodayMapView
+              restaurantId={rid}
+              selectedDate={selectedISO}
+              services={todaySchedule}
+              filter={filter}
+              tables={tables}
+              zones={zones}
+              reservations={todayRes}
+              onCreate={(time, tableId) => openCreate(time, tableId)}
+              onEdit={openEdit}
+            />
+          ) : (
+            <>
+              {/* Occupancy */}
+              {filter === "all" && (lunchSvc || dinnerSvc) && <DayStatusBlock />}
+              {filter === "lunch" && lunchSvc && (
+                <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
+              )}
+              {filter === "dinner" && dinnerSvc && (
+                <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
+              )}
 
-          {/* Agenda */}
-          <section className="rounded-2xl border border-border bg-card overflow-hidden">
+              {/* Agenda */}
+              <section className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between">
               <h2 className="text-lg">Agenda</h2>
               <span className="text-xs text-muted-foreground">{visibleRes.length} {visibleRes.length === 1 ? "reserva" : "reservas"} en total</span>
@@ -704,7 +718,9 @@ export default function RestaurantDashboard() {
             ) : (
               <ServiceBlock label="Noche" kind="dinner" svc={dinnerSvc} items={dinnerItems} />
             )}
-          </section>
+              </section>
+            </>
+          )}
         </div>
 
         {/* RIGHT PANEL */}
