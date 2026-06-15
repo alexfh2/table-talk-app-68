@@ -10,6 +10,7 @@ import type { Reservation, ReservationStatus, ReservationChannel, Zone, Restaura
 import { RESERVATION_STATUS_LABELS, CHANNEL_LABELS } from "@/lib/types";
 import { toast } from "sonner";
 import { autoAssignTable } from "@/lib/autoAssignTable";
+import { syncReservationTables } from "@/lib/reservationTables";
 
 export function ReservationFormDialog({
   open, onOpenChange, restaurantId, initial, onSaved,
@@ -68,11 +69,23 @@ export function ReservationFormDialog({
       }
     }
 
-    const res = initial?.id
-      ? await supabase.from("reservations").update(payload).eq("id", initial.id)
-      : await supabase.from("reservations").insert(payload);
+    let savedId: string | null = initial?.id ?? null;
+    if (initial?.id) {
+      const { error } = await supabase.from("reservations").update(payload).eq("id", initial.id);
+      if (error) { setSaving(false); return toast.error(error.message); }
+    } else {
+      const { data, error } = await supabase
+        .from("reservations")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (error) { setSaving(false); return toast.error(error.message); }
+      savedId = (data as { id: string } | null)?.id ?? null;
+    }
+    if (savedId) {
+      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+    }
     setSaving(false);
-    if (res.error) return toast.error(res.error.message);
     toast.success(initial ? "Reserva actualizada" : "Reserva creada");
     onOpenChange(false); onSaved();
   }
