@@ -150,12 +150,103 @@ async function validateSlot(restaurantId: string, date: string, time: string) {
   return { ok: true as const };
 }
 
+type AutoAssign =
+  | { tableId: string; needsReview: false; tableLabel: string; reason: "assigned"; freeSeats: number }
+  | { tableId: null; needsReview: true; reason: "needs_human_review"; freeSeats: number }
+  | { tableId: null; needsReview: false; reason: "no_capacity"; freeSeats: number };
+
+const DEFAULT_SLOT_MIN = 120;
+
+function minutesBetween(a: string, b: string) {
+  const [ah, am] = a.split(":").map(Number);
+  const [bh, bm] = b.split(":").map(Number);
+  return Math.abs(ah * 60 + am - (bh * 60 + bm));
+}
+
+async function autoAssignTable(opts: {
+  restaurantId: string;
+  date: string;
+  time: string;
+  partySize: number;
+  slotMinutes?: number;
+}): Promise<AutoAssign> {
+  const time = opts.time.slice(0, 5);
+  const window = opts.slotMinutes ?? DEFAULT_SLOT_MIN;
+
+  const [{ data: tables }, { data: reservations }] = await Promise.all([
+    supabase
+      .from("restaurant_tables")
+      .select("id, label, min_capacity, max_capacity, sort_order")
+      .eq("restaurant_id", opts.restaurantId)
+      .eq("is_active", true),
+    supabase
+      .from("reservations")
+      .select("id, table_id, reservation_time, status")
+      .eq("restaurant_id", opts.restaurantId)
+      .eq("reservation_date", opts.date)
+      .not("status", "in", "(cancelled,no_show)"),
+  ]);
+
+  const activeTables = (tables ?? []) as Array<{
+    id: string; label: string; min_capacity: number; max_capacity: number; sort_order: number | null;
+  }>;
+
+  const occupied = new Set<string>();
+  for (const r of reservations ?? []) {
+    if (!r.table_id) continue;
+    if (minutesBetween(time, String(r.reservation_time)) < window) occupied.add(r.table_id);
+  }
+
+  const free = activeTables.filter((t) => !occupied.has(t.id));
+  const freeSeats = free.reduce((s, t) => s + (t.max_capacity ?? 0), 0);
+
+  const candidates = free
+    .filter((t) => t.max_capacity >= opts.partySize)
+    .sort((a, b) =>
+      a.max_capacity !== b.max_capacity
+        ? a.max_capacity - b.max_capacity
+        : (a.sort_order ?? 0) - (b.sort_order ?? 0),
+    );
+
+  if (candidates.length > 0) {
+    const t = candidates[0];
+    return { tableId: t.id, needsReview: false, tableLabel: t.label, reason: "assigned", freeSeats };
+  }
+  if (freeSeats >= opts.partySize) {
+    return { tableId: null, needsReview: true, reason: "needs_human_review", freeSeats };
+  }
+  return { tableId: null, needsReview: false, reason: "no_capacity", freeSeats };
+}
+
 async function createReservation(p: Payload) {
   if (!p.restaurant_id || !p.customer_name || !p.reservation_date || !p.reservation_time || !p.party_size) {
     return json({ ok: false, error: "missing_fields" }, 400);
   }
   const v = await validateSlot(p.restaurant_id, p.reservation_date, p.reservation_time);
   if (!v.ok) return json(v, 409);
+
+  // Auto-assign the smallest table that fits the party.
+  const assignment = await autoAssignTable({
+    restaurantId: p.restaurant_id,
+    date: p.reservation_date,
+    time: p.reservation_time,
+    partySize: p.party_size,
+  });
+
+  if (assignment.reason === "no_capacity") {
+    return json({
+      ok: false,
+      error: "no_capacity",
+      message: "No hay capacidad disponible para esa hora.",
+      free_seats: assignment.freeSeats,
+    }, 409);
+  }
+
+  const status = assignment.needsReview ? "requires_human" : "confirmed";
+  const internalNotes = assignment.needsReview
+    ? "⚠ Sin mesa única que encaje. Requiere reasignación manual."
+    : null;
+
   const { data, error } = await supabase
     .from("reservations")
     .insert({
@@ -166,13 +257,38 @@ async function createReservation(p: Payload) {
       reservation_time: p.reservation_time,
       party_size: p.party_size,
       customer_notes: p.customer_notes ?? null,
-      status: "confirmed",
+      internal_notes: internalNotes,
+      table_id: assignment.tableId,
+      status,
       channel: "future_voice",
     })
     .select()
     .single();
   if (error) return json({ ok: false, error: error.message }, 400);
-  return json({ ok: true, reservation: data });
+
+  // Create a handoff request when the reservation needs human review.
+  if (assignment.needsReview && data) {
+    await supabase.from("human_handoff_requests").insert({
+      restaurant_id: p.restaurant_id,
+      reservation_id: data.id,
+      customer_name: p.customer_name,
+      customer_phone: p.customer_phone ?? null,
+      source_channel: "future_voice",
+      reason: "table_auto_assignment_failed",
+      customer_message: `Reserva para ${p.party_size} personas el ${p.reservation_date} a las ${p.reservation_time}. No hay una mesa única que encaje; reasignar manualmente.`,
+      status: "pending",
+    });
+  }
+
+  return json({
+    ok: true,
+    reservation: data,
+    assignment: {
+      table_id: assignment.tableId,
+      needs_review: assignment.needsReview,
+      ...(("tableLabel" in assignment) ? { table_label: assignment.tableLabel } : {}),
+    },
+  });
 }
 
 async function checkAvailability(p: Payload) {
