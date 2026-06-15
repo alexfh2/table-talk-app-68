@@ -305,11 +305,13 @@ async function createReservation(p: Payload) {
     preferredZone: p.preferred_zone ?? p.zone,
   });
 
-  if (assignment.reason === "no_capacity") {
+  if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
     return json({
       ok: false,
-      error: "no_capacity",
-      message: "No hay capacidad disponible para esa hora.",
+      error: assignment.reason,
+      message: assignment.reason === "no_tables_configured"
+        ? "El restaurante no tiene mesas configuradas."
+        : "No hay capacidad disponible para esa hora.",
       free_seats: assignment.freeSeats,
     }, 409);
   }
@@ -665,12 +667,14 @@ async function updateReservation(p: Payload) {
       excludeReservationId: p.reservation_id,
     });
 
-    if (assignment.reason === "no_capacity") {
+    if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
       return json({
         ok: false,
-        error: "no_capacity",
-        reason: "no_capacity",
-        message: "No hay capacidad disponible para esa hora.",
+        error: assignment.reason,
+        reason: assignment.reason,
+        message: assignment.reason === "no_tables_configured"
+          ? "El restaurante no tiene mesas configuradas."
+          : "No hay capacidad disponible para esa hora.",
         free_seats: assignment.freeSeats,
       }, 409);
     }
