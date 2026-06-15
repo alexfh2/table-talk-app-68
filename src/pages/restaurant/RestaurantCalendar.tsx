@@ -303,7 +303,7 @@ function DayView({
 }: {
   summary: DaySummary;
   allSchedulesForDow: ScheduleRow[];
-  tableLabel: (id: string | null) => string | null;
+  tableLabel: (r: Reservation) => string | null;
   onOpenReservation: (r: Reservation) => void;
   onCreateAt: (time: string) => void;
 }) {
@@ -363,7 +363,7 @@ function ServiceBlock({
   service, tableLabel, onOpenReservation, onCreateAt,
 }: {
   service: DaySummary["services"][number];
-  tableLabel: (id: string | null) => string | null;
+  tableLabel: (r: Reservation) => string | null;
   onOpenReservation: (r: Reservation) => void;
   onCreateAt: (time: string) => void;
 }) {
@@ -449,10 +449,10 @@ function ReservationCard({
   r, tableLabel, onClick,
 }: {
   r: Reservation;
-  tableLabel: (id: string | null) => string | null;
+  tableLabel: (r: Reservation) => string | null;
   onClick: () => void;
 }) {
-  const tl = tableLabel(r.table_id);
+  const tl = tableLabel(r);
   const isReview = r.status === "requires_human";
   const isCancelled = r.status === "cancelled" || r.status === "no_show";
   const reason = isReview ? parseReviewReasonsFromNotes(r.internal_notes)[0] : null;
