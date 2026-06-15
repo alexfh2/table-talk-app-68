@@ -176,7 +176,7 @@ export async function seedQATableData(restaurantId: string): Promise<QASeedResul
       reservation_time: spec.time,
       party_size: spec.party,
       status: "confirmed" as const,
-      channel: "manual",
+      channel: "manual" as const,
       table_id: primaryId,
       internal_notes: QA_NOTE,
     };
