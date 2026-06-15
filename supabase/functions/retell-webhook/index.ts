@@ -484,34 +484,121 @@ async function checkAvailability(p: Payload) {
   });
 }
 
+function normalizePhone(s: string | null | undefined): string {
+  if (!s) return "";
+  return s.replace(/\D/g, "");
+}
+
+function normalizeName(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nameSimilarity(a: string, b: string): number {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.85;
+  const ta = new Set(na.split(" "));
+  const tb = new Set(nb.split(" "));
+  let common = 0;
+  for (const t of ta) if (tb.has(t)) common++;
+  const denom = Math.max(ta.size, tb.size);
+  return denom ? common / denom : 0;
+}
+
 async function findReservation(p: Payload) {
   if (!p.restaurant_id) return json({ ok: false, error: "missing_restaurant_id" }, 400);
   if (!p.customer_name && !p.customer_phone) {
     return json({ ok: false, error: "missing_search_criteria", message: "Indica customer_name o customer_phone." }, 400);
   }
 
-  let q = supabase
-    .from("reservations")
-    .select("*")
-    .eq("restaurant_id", p.restaurant_id)
-    .not("status", "in", "(cancelled,no_show)")
-    .order("reservation_date", { ascending: true })
-    .order("reservation_time", { ascending: true });
+  // Today (UTC) to scope future/recent reservations
+  const today = new Date().toISOString().slice(0, 10);
 
-  if (p.reservation_date) q = q.eq("reservation_date", p.reservation_date);
-  if (p.customer_phone) {
-    const normalized = p.customer_phone.replace(/[^\d+]/g, "");
-    q = q.ilike("customer_phone", `%${normalized}%`);
+  const baseQuery = (date?: string) => {
+    let q = supabase
+      .from("reservations")
+      .select("*")
+      .eq("restaurant_id", p.restaurant_id)
+      // Exclude only explicitly cancelled/no_show; keep status null.
+      .or("status.is.null,and(status.neq.cancelled,status.neq.no_show)")
+      .order("reservation_date", { ascending: true })
+      .order("reservation_time", { ascending: true })
+      .limit(200);
+    if (date) q = q.eq("reservation_date", date);
+    else q = q.gte("reservation_date", today);
+    return q;
+  };
+
+  const runSearch = async (date?: string) => {
+    const { data, error } = await baseQuery(date);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  };
+
+  let pool: any[] = [];
+  try {
+    if (p.reservation_date) {
+      pool = await runSearch(p.reservation_date);
+      if (pool.length === 0) pool = await runSearch();
+    } else {
+      pool = await runSearch();
+    }
+  } catch (e) {
+    return json({ ok: false, error: String(e) }, 400);
   }
-  if (p.customer_name) q = q.ilike("customer_name", `%${p.customer_name}%`);
 
-  const { data, error } = await q;
-  if (error) return json({ ok: false, error: error.message }, 400);
+  const inputPhone = normalizePhone(p.customer_phone);
+  const inputName = normalizeName(p.customer_name);
+
+  type Scored = { reservation: any; score: number; phone_match: boolean; name_score: number };
+  const scored: Scored[] = pool.map((r) => {
+    const rPhone = normalizePhone(r.customer_phone);
+    let phoneMatch = false;
+    if (inputPhone && rPhone) {
+      // match last 9 digits (typical local number) or full
+      const a = inputPhone.slice(-9);
+      const b = rPhone.slice(-9);
+      phoneMatch = a.length >= 6 && (a === b || rPhone.endsWith(inputPhone) || inputPhone.endsWith(rPhone));
+    }
+    const nameScore = inputName ? nameSimilarity(inputName, r.customer_name ?? "") : 0;
+    let score = 0;
+    if (phoneMatch) score += 1;
+    score += nameScore;
+    return { reservation: r, score, phone_match: phoneMatch, name_score: nameScore };
+  });
+
+  const matches = scored
+    .filter((s) => s.phone_match || s.name_score >= 0.6)
+    .sort((a, b) => b.score - a.score);
+
+  const candidates = scored
+    .filter((s) => !matches.includes(s) && (s.name_score >= 0.3 || (inputPhone && normalizePhone(s.reservation.customer_phone))))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
 
   return json({
     ok: true,
-    count: data?.length ?? 0,
-    reservations: data ?? [],
+    count: matches.length,
+    reservations: matches.map((m) => m.reservation),
+    candidates: candidates.map((c) => ({
+      reservation: c.reservation,
+      name_score: Number(c.name_score.toFixed(2)),
+      phone_match: c.phone_match,
+    })),
+    searched: {
+      date: p.reservation_date ?? null,
+      fell_back_to_no_date: !!p.reservation_date && pool.length > 0 && !pool.some((r) => r.reservation_date === p.reservation_date),
+      pool_size: pool.length,
+    },
   });
 }
 
