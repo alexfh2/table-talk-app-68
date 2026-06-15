@@ -10,7 +10,13 @@ import { getAgentSettings } from "@/lib/queries";
 import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
 import { evaluateReservationRules, appendReviewReasonsToNotes, parseReviewReasonsFromNotes } from "@/lib/reservationRules";
-import { syncReservationTables } from "@/lib/reservationTables";
+import { syncReservationTables, getReservationTableIds } from "@/lib/reservationTables";
+import {
+  TableAssignmentPicker,
+  selectionFromExisting,
+  persistFromSelection,
+  type TableSelection,
+} from "@/components/TableAssignmentPicker";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -65,6 +71,7 @@ export function ReservationDrawer({
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
   const [confirmWithWarnings, setConfirmWithWarnings] = useState(false);
+  const [tableSelection, setTableSelection] = useState<TableSelection>({ kind: "none" });
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -90,6 +97,25 @@ export function ReservationDrawer({
     });
     setStatusManuallyChanged(false);
   }, [initial, open, createDefaults]);
+
+  // Initialize table selection from the loaded reservation (using reservation_tables when present).
+  useEffect(() => {
+    if (!open) return;
+    if (!initial?.id) {
+      setTableSelection({ kind: "none" });
+      return;
+    }
+    let cancelled = false;
+    getReservationTableIds(initial.id).then((ids) => {
+      if (cancelled) return;
+      setTableSelection(
+        selectionFromExisting({ tableIds: ids, fallbackTableId: initial.table_id ?? null }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, initial?.id, initial?.table_id]);
 
   // Load same-day reservations to compute availability
   useEffect(() => {
@@ -194,6 +220,7 @@ export function ReservationDrawer({
       }
     }
     setSaving(true);
+    const { tableId: selTableId, tableIds: selTableIds } = persistFromSelection(tableSelection);
     const payload = {
       ...v,
       ...extra,
@@ -202,6 +229,7 @@ export function ReservationDrawer({
       // Defaults for manual creation
       status: (appliedStatus ?? v.status ?? "confirmed") as ReservationStatus,
       channel: (v.channel ?? "manual") as ReservationChannel,
+      table_id: selTableId,
     } as any;
     let savedId: string | null = initial?.id ?? null;
     if (initial?.id) {
@@ -217,7 +245,7 @@ export function ReservationDrawer({
       savedId = (data as { id: string } | null)?.id ?? null;
     }
     if (savedId) {
-      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+      await syncReservationTables(savedId, selTableIds);
     }
     setSaving(false);
     if (initial) {
@@ -304,10 +332,12 @@ export function ReservationDrawer({
     }
 
     setSaving(true);
+    const { tableId: selTableId, tableIds: selTableIds } = persistFromSelection(tableSelection);
     const payload: any = {
       ...v,
       internal_notes: notes,
       restaurant_id: restaurantId,
+      table_id: selTableId,
     };
     if (opts.status) payload.status = opts.status;
     let savedId: string | null = initial?.id ?? null;
@@ -324,7 +354,7 @@ export function ReservationDrawer({
       savedId = (data as { id: string } | null)?.id ?? null;
     }
     if (savedId) {
-      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+      await syncReservationTables(savedId, selTableIds);
     }
     setSaving(false);
     toast.success(opts.successMsg);
@@ -563,39 +593,30 @@ export function ReservationDrawer({
           )}
 
           <section className="space-y-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación</h3>
-            <div className="space-y-1.5">
-              <Label>Zona o mesa</Label>
-              <Select value={v.table_id ?? "none"} onValueChange={(x) => setV({ ...v, table_id: x === "none" ? null : x })}>
-                <SelectTrigger>
-                  <span className="truncate">
-                    {v.table_id && v.table_id !== "none"
-                      ? (() => {
-                          const table = tables.find((t) => t.id === v.table_id);
-                          if (!table) return "Sin asignar";
-                          const zone = zones.find((z) => z.id === table.zone_id);
-                          return zone ? `${table.label} · ${zone.name}` : table.label;
-                        })()
-                      : "Sin asignar"}
-                  </span>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin asignar</SelectItem>
-                  {zones.map((z) => {
-                    const zt = tables.filter((t) => t.zone_id === z.id && t.is_active);
-                    if (zt.length === 0) return null;
-                    return (
-                      <div key={z.id}>
-                        <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{z.name}</div>
-                        {zt.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.label} · {t.min_capacity}-{t.max_capacity} personas</SelectItem>
-                        ))}
-                      </div>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-              {isEdit && v.reservation_date === todayISO && (v.status === "confirmed" || v.status === "pending") && !v.table_id && (() => {
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación de mesa</h3>
+            <TableAssignmentPicker
+              restaurantId={restaurantId}
+              date={v.reservation_date}
+              time={(v.reservation_time ?? "").slice(0, 5)}
+              partySize={partySize}
+              excludeReservationId={initial?.id}
+              value={tableSelection}
+              onChange={setTableSelection}
+              currentAssignmentLabel={(() => {
+                if (tableSelection.kind === "table") {
+                  const t = tables.find((x) => x.id === tableSelection.tableId);
+                  return t ? t.label : null;
+                }
+                if (tableSelection.kind === "combo") {
+                  return tableSelection.tableIds
+                    .map((id) => tables.find((t) => t.id === id)?.label)
+                    .filter(Boolean)
+                    .join(" + ") || null;
+                }
+                return null;
+              })()}
+            />
+            {isEdit && v.reservation_date === todayISO && (v.status === "confirmed" || v.status === "pending") && tableSelection.kind === "none" && (() => {
                 const now = new Date();
                 const [h, m] = (v.reservation_time ?? "00:00").slice(0, 5).split(":").map(Number);
                 const resTime = new Date();
@@ -609,7 +630,6 @@ export function ReservationDrawer({
                   </p>
                 );
               })()}
-            </div>
           </section>
 
           <section className="space-y-3">

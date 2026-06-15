@@ -10,7 +10,13 @@ import type { Reservation, ReservationStatus, ReservationChannel, Zone, Restaura
 import { RESERVATION_STATUS_LABELS, CHANNEL_LABELS } from "@/lib/types";
 import { toast } from "sonner";
 import { autoAssignTable } from "@/lib/autoAssignTable";
-import { syncReservationTables } from "@/lib/reservationTables";
+import { syncReservationTables, getReservationTableIds } from "@/lib/reservationTables";
+import {
+  TableAssignmentPicker,
+  selectionFromExisting,
+  persistFromSelection,
+  type TableSelection,
+} from "@/components/TableAssignmentPicker";
 
 export function ReservationFormDialog({
   open, onOpenChange, restaurantId, initial, onSaved,
@@ -25,6 +31,7 @@ export function ReservationFormDialog({
   const [saving, setSaving] = useState(false);
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [tableSelection, setTableSelection] = useState<TableSelection>({ kind: "none" });
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -44,12 +51,30 @@ export function ReservationFormDialog({
     });
   }, [initial, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (!initial?.id) {
+      setTableSelection({ kind: "none" });
+      return;
+    }
+    let cancelled = false;
+    getReservationTableIds(initial.id).then((ids) => {
+      if (cancelled) return;
+      setTableSelection(
+        selectionFromExisting({ tableIds: ids, fallbackTableId: initial.table_id ?? null }),
+      );
+    });
+    return () => { cancelled = true; };
+  }, [open, initial?.id, initial?.table_id]);
+
   async function save() {
     setSaving(true);
-    const payload: any = { ...v, restaurant_id: restaurantId };
+    const { tableId: selTableId, tableIds: selTableIds } = persistFromSelection(tableSelection);
+    const payload: any = { ...v, restaurant_id: restaurantId, table_id: selTableId };
 
-    // If user did not pick a table, try to auto-assign the smallest table that fits.
-    if (!initial?.id && !payload.table_id && payload.reservation_date && payload.reservation_time && payload.party_size) {
+    // If user did not pick anything, try to auto-assign the smallest table that fits.
+    let finalTableIds = selTableIds;
+    if (!initial?.id && tableSelection.kind === "none" && payload.reservation_date && payload.reservation_time && payload.party_size) {
       const res = await autoAssignTable({
         restaurantId,
         date: payload.reservation_date,
@@ -58,15 +83,14 @@ export function ReservationFormDialog({
       });
       if ("tableLabel" in res) {
         payload.table_id = res.tableId;
+        finalTableIds = [res.tableId];
         toast.message(`Mesa asignada automáticamente: ${res.tableLabel}`);
       } else if (res.needsReview) {
         payload.status = "requires_human";
         payload.internal_notes = [payload.internal_notes, "⚠ Sin mesa única que encaje. Requiere reasignación manual."].filter(Boolean).join("\n");
         toast.warning("No hay una mesa única que encaje. Reserva marcada para revisión humana.");
-      } else {
-        setSaving(false);
-        return toast.error("No hay capacidad disponible para esa hora.");
       }
+      // If no capacity: do not block — let the reservation be saved without a table.
     }
 
     let savedId: string | null = initial?.id ?? null;
@@ -83,7 +107,7 @@ export function ReservationFormDialog({
       savedId = (data as { id: string } | null)?.id ?? null;
     }
     if (savedId) {
-      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+      await syncReservationTables(savedId, finalTableIds);
     }
     setSaving(false);
     toast.success(initial ? "Reserva actualizada" : "Reserva creada");
@@ -113,30 +137,28 @@ export function ReservationFormDialog({
             </Select>
           </div>
           <div className="col-span-2 space-y-1.5"><Label>Notas del cliente</Label><Textarea rows={2} value={v.customer_notes ?? ""} onChange={(e) => setV({ ...v, customer_notes: e.target.value })} /></div>
-          <div className="col-span-2 space-y-1.5"><Label>Mesa</Label>
-            <Select value={v.table_id ?? "none"} onValueChange={(x) => setV({ ...v, table_id: x === "none" ? null : x })}>
-              <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin asignar</SelectItem>
-                {zones.map(z => {
-                  const zt = tables.filter(t => t.zone_id === z.id && t.is_active);
-                  if (zt.length === 0) return null;
-                  return (
-                    <div key={z.id}>
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{z.name}</div>
-                      {zt.map(t => {
-                        const over = (v.party_size ?? 0) > t.max_capacity;
-                        return (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.label} · {t.min_capacity}-{t.max_capacity} pax{over ? " ⚠ excede capacidad" : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+          <div className="col-span-2 space-y-1.5">
+            <Label>Asignación de mesa</Label>
+            <TableAssignmentPicker
+              restaurantId={restaurantId}
+              date={v.reservation_date}
+              time={(v.reservation_time ?? "").slice(0, 5)}
+              partySize={Number(v.party_size ?? 0)}
+              excludeReservationId={initial?.id}
+              value={tableSelection}
+              onChange={setTableSelection}
+              currentAssignmentLabel={(() => {
+                if (tableSelection.kind === "table") {
+                  return tables.find((t) => t.id === tableSelection.tableId)?.label ?? null;
+                }
+                if (tableSelection.kind === "combo") {
+                  return tableSelection.tableIds
+                    .map((id) => tables.find((t) => t.id === id)?.label)
+                    .filter(Boolean).join(" + ") || null;
+                }
+                return null;
+              })()}
+            />
           </div>
           <div className="col-span-2 space-y-1.5"><Label>Notas internas</Label><Textarea rows={2} value={v.internal_notes ?? ""} onChange={(e) => setV({ ...v, internal_notes: e.target.value })} /></div>
         </div>
