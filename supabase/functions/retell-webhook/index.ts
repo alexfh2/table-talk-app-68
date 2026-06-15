@@ -507,7 +507,11 @@ async function checkAvailability(p: Payload) {
         excludeReservationId: p.exclude_reservation_id,
       });
 
-      if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
+      if (
+        assignment.reason === "no_capacity" ||
+        assignment.reason === "no_tables_configured" ||
+        assignment.reason === "zone_unavailable"
+      ) {
         return json({
           ok: true,
           date: p.date,
@@ -515,14 +519,19 @@ async function checkAvailability(p: Payload) {
           is_open: true,
           available: false,
           reason: assignment.reason,
-          message: assignment.reason === "no_tables_configured"
-            ? "El restaurante no tiene mesas configuradas."
-            : "No hay capacidad disponible para esa hora.",
+          message:
+            assignment.reason === "no_tables_configured"
+              ? "El restaurante no tiene mesas configuradas."
+              : assignment.reason === "zone_unavailable"
+                ? `No hay disponibilidad en la zona "${p.preferred_zone ?? p.zone}". Zonas disponibles: ${(assignment.debug?.available_zones ?? []).map((z) => z.name).join(", ") || "ninguna"}.`
+                : "No hay capacidad disponible para esa hora.",
           assignment_preview: {
             table_id: null,
             needs_review: false,
             free_seats: assignment.freeSeats,
           },
+          availability_debug: assignment.debug,
+          available_zones: assignment.debug?.available_zones ?? [],
           source,
         });
       }
@@ -541,6 +550,7 @@ async function checkAvailability(p: Payload) {
             needs_review: true,
             free_seats: assignment.freeSeats,
           },
+          availability_debug: assignment.debug,
           source,
         });
       }
@@ -559,6 +569,7 @@ async function checkAvailability(p: Payload) {
           needs_review: false,
           free_seats: assignment.freeSeats,
         },
+        availability_debug: assignment.debug,
         source,
         season: season ? { id: season.id, name: season.name } : null,
       });
