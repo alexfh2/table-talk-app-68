@@ -424,6 +424,41 @@ function FloorPlanPicker({
                 backgroundSize: "22px 22px",
               }}
             >
+              {elements
+                .filter((el) => el.zone_id === zone.id)
+                .map((el) => {
+                  const radius =
+                    el.shape === "circle"
+                      ? "9999px"
+                      : el.shape === "square"
+                      ? "6px"
+                      : "4px";
+                  const Icon = ELEMENT_ICONS[el.element_type];
+                  return (
+                    <div
+                      key={el.id}
+                      aria-hidden
+                      className="absolute flex items-center justify-center gap-1.5 border border-dashed border-muted-foreground/40 bg-muted/40 text-muted-foreground pointer-events-none"
+                      style={{
+                        left: `${el.visual_x}%`,
+                        top: `${el.visual_y}%`,
+                        width: `${el.visual_width}%`,
+                        height: `${el.visual_height}%`,
+                        minWidth: 32,
+                        minHeight: 24,
+                        borderRadius: radius,
+                        transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
+                        zIndex: 0,
+                      }}
+                    >
+                      <Icon className="h-3 w-3 shrink-0" />
+                      <span className="text-[10px] font-medium uppercase tracking-wide truncate px-1">
+                        {el.label || ZONE_ELEMENT_LABELS[el.element_type]}
+                      </span>
+                    </div>
+                  );
+                })}
+
               {zTables.map((t, idx) => {
                 const shape = (t.visual_shape ?? "round") as "round" | "square" | "rectangle";
                 const def = DEFAULT_BY_SHAPE[shape];
