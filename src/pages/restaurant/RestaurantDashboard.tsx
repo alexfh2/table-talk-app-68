@@ -22,6 +22,7 @@ import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/e
 import { getReservationsTableMap, effectiveTableIds, formatTableAssignment } from "@/lib/reservationTables";
 import type { Reservation, ScheduleRow, Zone, RestaurantTable } from "@/lib/types";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
+import { TodayMapView } from "@/components/restaurant-dashboard/TodayMapView";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -130,6 +131,7 @@ export default function RestaurantDashboard() {
   const [createDefaults, setCreateDefaults] = useState<Partial<Reservation> | undefined>(undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
+  const [view, setView] = useState<"agenda" | "map">("agenda");
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
@@ -237,12 +239,13 @@ export default function RestaurantDashboard() {
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 6);
 
-  function openCreate(time?: string) {
+  function openCreate(time?: string, tableId?: string) {
     setDrawerMode("create");
     setDrawerInitial(null);
     setCreateDefaults({
       reservation_date: selectedISO,
       ...(time ? { reservation_time: `${time}:00` } : {}),
+      ...(tableId ? { table_id: tableId } : {}),
     });
     setDrawerOpen(true);
   }
