@@ -22,6 +22,7 @@ import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/e
 import { getReservationsTableMap, effectiveTableIds, formatTableAssignment } from "@/lib/reservationTables";
 import type { Reservation, ScheduleRow, Zone, RestaurantTable } from "@/lib/types";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
+import { TodayMapView } from "@/components/restaurant-dashboard/TodayMapView";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -130,6 +131,7 @@ export default function RestaurantDashboard() {
   const [createDefaults, setCreateDefaults] = useState<Partial<Reservation> | undefined>(undefined);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [now, setNow] = useState(() => new Date());
+  const [view, setView] = useState<"agenda" | "map">("agenda");
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 60_000);
@@ -237,12 +239,13 @@ export default function RestaurantDashboard() {
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""))
     .slice(0, 6);
 
-  function openCreate(time?: string) {
+  function openCreate(time?: string, tableId?: string) {
     setDrawerMode("create");
     setDrawerInitial(null);
     setCreateDefaults({
       reservation_date: selectedISO,
       ...(time ? { reservation_time: `${time}:00` } : {}),
+      ...(tableId ? { table_id: tableId } : {}),
     });
     setDrawerOpen(true);
   }
@@ -621,6 +624,27 @@ export default function RestaurantDashboard() {
                     </button>
                   ))}
                 </div>
+                <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
+                  {[
+                    { v: "agenda" as const, label: "Agenda" },
+                    { v: "map" as const, label: "Mapa" },
+                  ].map((o) => (
+                    <button
+                      key={o.v}
+                      role="tab"
+                      aria-selected={view === o.v}
+                      onClick={() => setView(o.v)}
+                      className={cn(
+                        "px-3.5 py-1.5 text-xs font-medium rounded-full transition-colors",
+                        view === o.v
+                          ? "bg-card text-foreground shadow-[0_1px_0_hsl(var(--border))]"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
                 <span className="inline-flex items-center gap-1.5 text-xs text-success">
                   <span className="h-1.5 w-1.5 rounded-full bg-success" /> Agente conectado
                 </span>
@@ -655,17 +679,31 @@ export default function RestaurantDashboard() {
             </div>
           </div>
 
-          {/* Occupancy */}
-          {filter === "all" && (lunchSvc || dinnerSvc) && <DayStatusBlock />}
-          {filter === "lunch" && lunchSvc && (
-            <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
-          )}
-          {filter === "dinner" && dinnerSvc && (
-            <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
-          )}
+          {view === "map" ? (
+            <TodayMapView
+              restaurantId={rid}
+              selectedDate={selectedISO}
+              services={todaySchedule}
+              filter={filter}
+              tables={tables}
+              zones={zones}
+              reservations={todayRes}
+              onCreate={(time, tableId) => openCreate(time, tableId)}
+              onEdit={openEdit}
+            />
+          ) : (
+            <>
+              {/* Occupancy */}
+              {filter === "all" && (lunchSvc || dinnerSvc) && <DayStatusBlock />}
+              {filter === "lunch" && lunchSvc && (
+                <OccupancyBlock svc={lunchSvc} kind="lunch" label="Mediodía" />
+              )}
+              {filter === "dinner" && dinnerSvc && (
+                <OccupancyBlock svc={dinnerSvc} kind="dinner" label="Noche" />
+              )}
 
-          {/* Agenda */}
-          <section className="rounded-2xl border border-border bg-card overflow-hidden">
+              {/* Agenda */}
+              <section className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-4 flex items-center justify-between">
               <h2 className="text-lg">Agenda</h2>
               <span className="text-xs text-muted-foreground">{visibleRes.length} {visibleRes.length === 1 ? "reserva" : "reservas"} en total</span>
@@ -680,7 +718,9 @@ export default function RestaurantDashboard() {
             ) : (
               <ServiceBlock label="Noche" kind="dinner" svc={dinnerSvc} items={dinnerItems} />
             )}
-          </section>
+              </section>
+            </>
+          )}
         </div>
 
         {/* RIGHT PANEL */}
