@@ -7,6 +7,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { listReservations } from "@/lib/queries";
 import { parseReviewReasonsFromNotes } from "@/lib/reservationRules";
+import { getReservationsTableMap, effectiveTableIds, formatTableAssignment } from "@/lib/reservationTables";
 import { useAuth } from "@/hooks/useAuth";
 import {
   RESERVATION_STATUS_LABELS,
@@ -102,6 +103,7 @@ export default function RestaurantReservations() {
   const [items, setItems] = useState<Reservation[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [tableMap, setTableMap] = useState<Map<string, string[]>>(new Map());
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Reservation | null>(null);
   const [mode, setMode] = useState<DrawerMode>("create");
@@ -117,7 +119,10 @@ export default function RestaurantReservations() {
 
   function reload() {
     if (!rid) return;
-    listReservations(rid).then(setItems);
+    listReservations(rid).then(async (rs) => {
+      setItems(rs);
+      setTableMap(await getReservationsTableMap(rs.map((r) => r.id)));
+    });
     supabase.from("restaurant_tables").select("*").eq("restaurant_id", rid)
       .then(({ data }) => setTables((data ?? []) as RestaurantTable[]));
     supabase.from("restaurant_zones").select("*").eq("restaurant_id", rid)
@@ -125,12 +130,9 @@ export default function RestaurantReservations() {
   }
   useEffect(reload, [rid]);
 
-  function tableInfo(id: string | null): { label: string; zone?: string } | null {
-    if (!id) return null;
-    const t = tables.find((x) => x.id === id);
-    if (!t) return null;
-    const z = zones.find((z) => z.id === t.zone_id);
-    return z ? { label: t.label, zone: z.name } : { label: t.label };
+  function tableInfo(r: Reservation): { label: string; zone?: string } | null {
+    const ids = effectiveTableIds(r.id, r.table_id, tableMap);
+    return formatTableAssignment(ids, tables, zones);
   }
 
   const dateRange = useMemo(() => {
@@ -403,7 +405,7 @@ export default function RestaurantReservations() {
                 <TableBody>
                   {filtered.map((r) => {
                     const isReview = r.status === "requires_human";
-                    const info = tableInfo(r.table_id);
+                    const info = tableInfo(r);
                     const upcomingNoTable = isUpcoming(r.reservation_date) && !info;
                     const reason = isReview ? reviewReasonText(r) : "";
                     const actionLabel = primaryActionLabel(r.status);
@@ -502,7 +504,7 @@ export default function RestaurantReservations() {
           <div className="md:hidden space-y-3">
             {filtered.map((r) => {
               const isReview = r.status === "requires_human";
-              const info = tableInfo(r.table_id);
+              const info = tableInfo(r);
               const upcomingNoTable = isUpcoming(r.reservation_date) && !info;
               const reason = isReview ? reviewReasonText(r) : "";
               const actionLabel = primaryActionLabel(r.status);

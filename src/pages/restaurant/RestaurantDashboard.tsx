@@ -19,6 +19,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { listReservations } from "@/lib/queries";
 import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
+import { getReservationsTableMap, effectiveTableIds, formatTableAssignment } from "@/lib/reservationTables";
 import type { Reservation, ScheduleRow, Zone, RestaurantTable } from "@/lib/types";
 import { ReservationDrawer, type DrawerMode } from "@/components/ReservationDrawer";
 import { cn } from "@/lib/utils";
@@ -121,6 +122,7 @@ export default function RestaurantDashboard() {
   const [scheduleCtx, setScheduleCtx] = useState<ScheduleContext>({ schedule: [], seasons: [], exceptions: [] });
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [zones, setZones] = useState<Zone[]>([]);
+  const [tableMap, setTableMap] = useState<Map<string, string[]>>(new Map());
   const [seatedLocal, setSeatedLocal] = useState<Set<string>>(new Set());
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<DrawerMode>("create");
@@ -147,6 +149,7 @@ export default function RestaurantDashboard() {
     setSchedule(ctx.schedule);
     setTables((tRes.data as RestaurantTable[]) ?? []);
     setZones((zRes.data as Zone[]) ?? []);
+    setTableMap(await getReservationsTableMap(r.map((x) => x.id)));
   }
 
   useEffect(() => { reload(); /* eslint-disable-next-line */ }, [rid]);
@@ -323,21 +326,21 @@ export default function RestaurantDashboard() {
       external_calendar: "Externo",
     };
 
-    const table = r.table_id ? tables.find((t) => t.id === r.table_id) : null;
-    const zone = table?.zone_id ? zones.find((z) => z.id === table.zone_id) : null;
+    const ids = effectiveTableIds(r.id, r.table_id, tableMap);
+    const formatted = formatTableAssignment(ids, tables, zones);
     const channelLabel = CHANNEL_LABEL_SHORT[r.channel] ?? r.channel;
 
     let assignmentText: string;
-    if (table && zone) {
-      assignmentText = `${table.label} · ${zone.name} · ${channelLabel}`;
-    } else if (table) {
-      assignmentText = `${table.label} · ${channelLabel}`;
+    if (formatted && formatted.zone) {
+      assignmentText = `${formatted.label} · ${formatted.zone} · ${channelLabel}`;
+    } else if (formatted) {
+      assignmentText = `${formatted.label} · ${channelLabel}`;
     } else {
       assignmentText = `Sin asignar · ${channelLabel}`;
     }
 
     function isUpcomingUnassigned() {
-      if (r.table_id) return false;
+      if (ids.length > 0) return false;
       const [h, m] = r.reservation_time.split(":").map(Number);
       const resMins = h * 60 + m;
       const nowMins = now.getHours() * 60 + now.getMinutes();
