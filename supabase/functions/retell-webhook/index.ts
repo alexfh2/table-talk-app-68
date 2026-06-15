@@ -28,6 +28,9 @@ type Action =
 interface Payload {
   action: Action;
   restaurant_id?: string;
+  // Optional correlation id from Retell (call_id / conversation_id)
+  conversation_id?: string;
+  call_id?: string;
   // create
   customer_name?: string;
   customer_phone?: string;
@@ -41,6 +44,25 @@ interface Payload {
   date?: string;
   // lookup by phone
   phone?: string;
+}
+
+function logEvent(entry: Record<string, unknown>) {
+  try {
+    console.log(JSON.stringify({ ts: new Date().toISOString(), ...entry }));
+  } catch {
+    console.log("[retell-webhook] log_serialize_error", entry);
+  }
+}
+
+function redact(obj: unknown): unknown {
+  if (!obj || typeof obj !== "object") return obj;
+  const out: Record<string, unknown> = Array.isArray(obj) ? [] as any : {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (/token|secret|authorization|apikey/i.test(k)) out[k] = "[redacted]";
+    else if (v && typeof v === "object") out[k] = redact(v);
+    else out[k] = v;
+  }
+  return out;
 }
 
 function dayOfWeekFromISO(d: string): number {
@@ -527,26 +549,81 @@ Deno.serve(async (req) => {
     req.headers.get("x-webhook-token") ??
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
     "";
-  if (provided !== expected) return json({ ok: false, error: "unauthorized" }, 401);
+  if (provided !== expected) {
+    logEvent({
+      level: "warn",
+      event: "auth_failed",
+      method: req.method,
+      url: req.url,
+      user_agent: req.headers.get("user-agent"),
+    });
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
 
   let payload: Payload;
   try {
     payload = await req.json();
   } catch {
+    logEvent({ level: "error", event: "invalid_json" });
     return json({ ok: false, error: "invalid_json" }, 400);
   }
 
+  const requestId = crypto.randomUUID();
+  const conversationId =
+    payload.conversation_id ??
+    payload.call_id ??
+    req.headers.get("x-retell-call-id") ??
+    req.headers.get("x-conversation-id") ??
+    null;
+  const started = Date.now();
+
+  logEvent({
+    level: "info",
+    event: "request",
+    request_id: requestId,
+    conversation_id: conversationId,
+    action: payload.action,
+    restaurant_id: payload.restaurant_id ?? null,
+    payload: redact(payload),
+  });
+
   try {
+    let res: Response;
     switch (payload.action) {
-      case "create_reservation": return await createReservation(payload);
-      case "check_availability": return await checkAvailability(payload);
-      case "update_reservation": return await updateReservation(payload);
-      case "cancel_reservation": return await cancelReservation(payload);
-      case "get_restaurant_info": return await getRestaurantInfo(payload);
-      case "get_restaurant_info_by_phone": return await getRestaurantInfoByPhone(payload);
-      default: return json({ ok: false, error: "unknown_action" }, 400);
+      case "create_reservation": res = await createReservation(payload); break;
+      case "check_availability": res = await checkAvailability(payload); break;
+      case "update_reservation": res = await updateReservation(payload); break;
+      case "cancel_reservation": res = await cancelReservation(payload); break;
+      case "get_restaurant_info": res = await getRestaurantInfo(payload); break;
+      case "get_restaurant_info_by_phone": res = await getRestaurantInfoByPhone(payload); break;
+      default: res = json({ ok: false, error: "unknown_action" }, 400);
     }
+
+    // Clone so we can both log the body and return it intact
+    let bodyParsed: unknown = null;
+    try { bodyParsed = await res.clone().json(); } catch { bodyParsed = await res.clone().text(); }
+    logEvent({
+      level: res.status >= 400 ? "warn" : "info",
+      event: "response",
+      request_id: requestId,
+      conversation_id: conversationId,
+      action: payload.action,
+      status: res.status,
+      duration_ms: Date.now() - started,
+      response: bodyParsed,
+    });
+    return res;
   } catch (e) {
+    logEvent({
+      level: "error",
+      event: "exception",
+      request_id: requestId,
+      conversation_id: conversationId,
+      action: payload.action,
+      duration_ms: Date.now() - started,
+      error: String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+    });
     return json({ ok: false, error: String(e) }, 500);
   }
 });
