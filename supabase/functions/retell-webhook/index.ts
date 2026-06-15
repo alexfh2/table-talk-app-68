@@ -433,15 +433,17 @@ async function checkAvailability(p: Payload) {
         excludeReservationId: p.exclude_reservation_id,
       });
 
-      if (assignment.reason === "no_capacity") {
+      if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
         return json({
           ok: true,
           date: p.date,
           time: p.reservation_time,
           is_open: true,
           available: false,
-          reason: "no_capacity",
-          message: "No hay capacidad disponible para esa hora.",
+          reason: assignment.reason,
+          message: assignment.reason === "no_tables_configured"
+            ? "El restaurante no tiene mesas configuradas."
+            : "No hay capacidad disponible para esa hora.",
           assignment_preview: {
             table_id: null,
             needs_review: false,
