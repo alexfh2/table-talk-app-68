@@ -8,6 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Plus, Trash2, Wand2, Link2, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import { seedQATableData } from "@/lib/qaSeed";
+import { useAuth } from "@/hooks/useAuth";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -28,6 +30,9 @@ const DEMO_ZONES = [
 ];
 
 export function TablesPanel({ restaurantId }: { restaurantId: string }) {
+  const { profile } = useAuth();
+  const canSeedQA = profile?.role === "platform_admin" || import.meta.env.DEV;
+  const [seedingQA, setSeedingQA] = useState(false);
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [saving, setSaving] = useState(false);
@@ -219,6 +224,27 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
               </AlertDialog>
             )}
             <Button size="sm" onClick={addZone}><Plus className="h-4 w-4 mr-1" />Añadir zona</Button>
+            {canSeedQA && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={seedingQA}
+                onClick={async () => {
+                  setSeedingQA(true);
+                  try {
+                    const r = await seedQATableData(restaurantId);
+                    toast.success(`Datos QA cargados (${r.reservationIds.length} reservas para ${r.date})`);
+                    await reload();
+                  } catch (e: any) {
+                    toast.error(e?.message ?? "Error cargando datos QA");
+                  } finally {
+                    setSeedingQA(false);
+                  }
+                }}
+              >
+                {seedingQA ? "Cargando…" : "Cargar datos QA de mesas"}
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
