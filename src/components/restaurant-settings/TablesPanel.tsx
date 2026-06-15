@@ -276,15 +276,17 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
                 return (
                   <div key={t.id} className="grid grid-cols-2 md:grid-cols-6 gap-2 items-end border rounded-lg p-3">
                     <div className="space-y-1.5 md:col-span-1">
-                      <Label className="text-xs">Etiqueta</Label>
+                      <div className="flex items-center justify-between gap-2">
+                        <Label className="text-xs">Etiqueta</Label>
+                        <button
+                          type="button"
+                          onClick={() => setTableDrawer({ open: true, tableId: t.id })}
+                          className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+                        >
+                          {indicator ?? "Ver detalle"}
+                        </button>
+                      </div>
                       <Input value={t.label} onChange={e => patchTable(t.id, { label: e.target.value })} />
-                      <button
-                        type="button"
-                        onClick={() => setTableDrawer({ open: true, tableId: t.id })}
-                        className="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 mt-0.5"
-                      >
-                        {indicator ?? "Ver detalle"}
-                      </button>
                     </div>
                     <div className="space-y-1.5"><Label className="text-xs">Mín. personas</Label><Input type="number" min={1} value={t.min_capacity} onChange={e => patchTable(t.id, { min_capacity: Number(e.target.value) })} /></div>
                     <div className="space-y-1.5"><Label className="text-xs">Máx. personas</Label><Input type="number" min={1} value={t.max_capacity} onChange={e => patchTable(t.id, { max_capacity: Number(e.target.value) })} /></div>
