@@ -186,7 +186,11 @@ export function computeRecommendation(
     }
 
     const combinationBreakPenalty = breaksFullyFree * 2;
-    const alreadyBrokenCombinationBonus = belongsToBroken ? -1.5 : 0;
+    // Only reward "broken combo" tables when they would otherwise carry no
+    // intrinsic advantage — the bonus exists to break ties against tables
+    // that break a fresh combo, not to outrank neutral non-combo tables.
+    const alreadyBrokenCombinationBonus =
+      belongsToBroken && breaksFullyFree === 0 ? -0.25 : 0;
     const highCombinabilityPenalty =
       memberCombos.length > 1 ? (memberCombos.length - 1) * 0.5 : 0;
     const preferredZonePenalty =
