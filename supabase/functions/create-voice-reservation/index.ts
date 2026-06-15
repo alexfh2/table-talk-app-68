@@ -669,13 +669,14 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   if (preferredZoneId) {
     const { data: zRow } = await supabase
       .from("restaurant_zones")
-      .select("id, name, is_active")
+      .select("id, name, is_active, restaurant_id")
       .eq("id", preferredZoneId)
       .maybeSingle();
-    if (!zRow || !zRow.is_active || (zRow as any).restaurant_id && false) {
+    const z = zRow as { name: string; is_active: boolean; restaurant_id: string } | null;
+    if (!z || !z.is_active || z.restaurant_id !== p.restaurantId) {
       preferredZoneId = null;
     } else {
-      preferredZoneName = (zRow as { name: string }).name;
+      preferredZoneName = z.name;
     }
   }
 
