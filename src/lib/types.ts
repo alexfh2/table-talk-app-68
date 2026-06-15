@@ -55,6 +55,7 @@ export interface Reservation {
   updated_at: string;
 }
 
+
 export interface ScheduleRow {
   id: string;
   restaurant_id: string;
