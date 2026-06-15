@@ -700,6 +700,7 @@ Deno.serve(async (req) => {
       case "check_availability": return await checkAvailability(payload);
       case "update_reservation": return await updateReservation(payload);
       case "cancel_reservation": return await cancelReservation(payload);
+      case "find_reservation": return await findReservation(payload);
       case "get_restaurant_info": return await getRestaurantInfo(payload);
       case "get_restaurant_info_by_phone": return await getRestaurantInfoByPhone(payload);
       default: return json({ ok: false, error: "unknown_action" }, 400);
