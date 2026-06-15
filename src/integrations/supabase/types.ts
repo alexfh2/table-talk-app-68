@@ -447,6 +447,7 @@ export type Database = {
           id: string
           internal_notes: string | null
           party_size: number
+          preferred_zone_id: string | null
           reservation_date: string
           reservation_time: string
           restaurant_id: string
@@ -463,6 +464,7 @@ export type Database = {
           id?: string
           internal_notes?: string | null
           party_size?: number
+          preferred_zone_id?: string | null
           reservation_date: string
           reservation_time: string
           restaurant_id: string
@@ -479,6 +481,7 @@ export type Database = {
           id?: string
           internal_notes?: string | null
           party_size?: number
+          preferred_zone_id?: string | null
           reservation_date?: string
           reservation_time?: string
           restaurant_id?: string
@@ -487,6 +490,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "reservations_preferred_zone_id_fkey"
+            columns: ["preferred_zone_id"]
+            isOneToOne: false
+            referencedRelation: "restaurant_zones"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "reservations_restaurant_id_fkey"
             columns: ["restaurant_id"]

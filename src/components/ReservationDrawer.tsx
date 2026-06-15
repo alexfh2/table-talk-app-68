@@ -594,6 +594,29 @@ export function ReservationDrawer({
 
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Asignación de mesa</h3>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Preferencia de zona</Label>
+              <Select
+                value={(v.preferred_zone_id as string | null | undefined) ?? "none"}
+                onValueChange={(x) =>
+                  setV({ ...v, preferred_zone_id: x === "none" ? null : x })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin preferencia" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin preferencia</SelectItem>
+                  {zones
+                    .filter((z) => z.is_active)
+                    .map((z) => (
+                      <SelectItem key={z.id} value={z.id}>
+                        {z.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
             <TableAssignmentPicker
               restaurantId={restaurantId}
               date={v.reservation_date}
@@ -602,6 +625,7 @@ export function ReservationDrawer({
               excludeReservationId={initial?.id}
               value={tableSelection}
               onChange={setTableSelection}
+              preferredZoneId={(v.preferred_zone_id as string | null | undefined) ?? null}
               currentAssignmentLabel={(() => {
                 if (tableSelection.kind === "table") {
                   const t = tables.find((x) => x.id === tableSelection.tableId);

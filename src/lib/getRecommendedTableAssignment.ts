@@ -84,6 +84,7 @@ export async function getRecommendedTableAssignment(opts: {
   time: string;
   partySize: number;
   preferredZoneId?: string | null;
+  preferredZoneName?: string | null;
   excludeReservationId?: string;
   slotMinutes?: number;
   /** Optional injection of pre-computed options (tests / shared calls). */
@@ -95,6 +96,7 @@ export async function getRecommendedTableAssignment(opts: {
 }): Promise<RecommendedAssignment> {
   const partySize = opts.partySize;
   const preferredZoneId = opts.preferredZoneId ?? null;
+  const preferredZoneName = opts.preferredZoneName ?? null;
 
   const available =
     opts.options ??
@@ -113,6 +115,7 @@ export async function getRecommendedTableAssignment(opts: {
 
   return computeRecommendation(available, partySize, preferredZoneId, context, {
     withDebug: opts.withDebug,
+    preferredZoneName,
   });
 }
 
@@ -156,7 +159,7 @@ export function computeRecommendation(
   partySize: number,
   preferredZoneId: string | null,
   context: CombinationContext = { combinations: [], occupiedTableIds: new Set() },
-  flags: { withDebug?: boolean } = {},
+  flags: { withDebug?: boolean; preferredZoneName?: string | null } = {},
 ): RecommendedAssignment {
   // Pre-compute combination membership data per table.
   const combosByTable = new Map<string, typeof context.combinations>();
@@ -279,7 +282,15 @@ export function computeRecommendation(
     confidence = confidence === "high" ? "medium" : "low";
   }
 
-  const reason = buildReason(recommended, partySize, preferredZoneId);
+  const anyInPreferredZone =
+    !!preferredZoneId && all.some((o) => o.inPreferredZone);
+  const reason = buildReason(
+    recommended,
+    partySize,
+    preferredZoneId,
+    flags.preferredZoneName ?? null,
+    anyInPreferredZone,
+  );
 
   const result: RecommendedAssignment = {
     recommendedOption: recommended,
@@ -301,8 +312,19 @@ function buildReason(
   o: RecommendedIndividual | RecommendedCombination,
   partySize: number,
   preferredZoneId: string | null,
+  preferredZoneName: string | null,
+  anyInPreferredZone: boolean,
 ): string {
   const personas = `${partySize} ${partySize === 1 ? "persona" : "personas"}`;
+  if (preferredZoneId) {
+    if (o.inPreferredZone) {
+      return "Respeta la preferencia de zona del cliente.";
+    }
+    if (!anyInPreferredZone) {
+      const zoneLabel = preferredZoneName ? preferredZoneName : "la zona preferida";
+      return `No hay mesas disponibles en ${zoneLabel}. Esta es la mejor alternativa.`;
+    }
+  }
   if (o.type === "individual_table") {
     const cap = o.table.max_capacity;
     if (o.waste === 0)
