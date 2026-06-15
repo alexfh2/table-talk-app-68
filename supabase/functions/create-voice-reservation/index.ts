@@ -41,6 +41,7 @@ interface VoiceReservationPayload {
   partySize?: number;
   notes?: string | null;
   preferredZoneId?: string | null;
+  preferredZoneName?: string | null;
   transcript?: string | null;
   callId?: string | null;
 }
@@ -70,6 +71,7 @@ interface VoiceReservationResponse {
   messageForAgent: string;
   reviewReasons: string[];
   blockingReason?: string;
+  idempotent?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -581,6 +583,52 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   }
   const p = valid.data;
 
+  // 0) Idempotencia por callId: si ya existe una reserva con el mismo Call ID
+  // para este restaurante, devolverla sin crear duplicado.
+  const callId = (payload.callId ?? "").trim();
+  if (callId) {
+    const callIdTag = `Call ID: ${callId}`;
+    const { data: existingRows } = await supabase
+      .from("reservations")
+      .select("id, status, table_id, reservation_date, reservation_time, party_size")
+      .eq("restaurant_id", p.restaurantId)
+      .ilike("internal_notes", `%${callIdTag}%`)
+      .order("created_at", { ascending: false })
+      .limit(1);
+    const existing = (existingRows ?? [])[0];
+    if (existing) {
+      const { data: rtRows } = await supabase
+        .from("reservation_tables")
+        .select("table_id, restaurant_tables(label, zone_id, restaurant_zones(name))")
+        .eq("reservation_id", existing.id);
+      const assignedTables: AssignedTable[] = (rtRows ?? []).map((r: any) => ({
+        id: r.table_id,
+        label: r.restaurant_tables?.label ?? "",
+        zoneName: r.restaurant_tables?.restaurant_zones?.name ?? null,
+      }));
+      const status: Status =
+        existing.status === "requires_human" ? "requires_human" : "confirmed";
+      console.log("[create-voice-reservation] idempotent hit", {
+        callId,
+        reservationId: existing.id,
+        status,
+      });
+      return {
+        success: true,
+        reservationId: existing.id,
+        status,
+        channel: "future_voice",
+        assignedTables: assignedTables.length > 0 ? assignedTables : undefined,
+        messageForAgent:
+          status === "requires_human"
+            ? "Ya tengo registrada esta solicitud. El restaurante la revisará."
+            : `Ya tengo registrada esta reserva para ${personas(existing.party_size)} el ${formatDateEs(existing.reservation_date)} a las ${String(existing.reservation_time).slice(0, 5)}.`,
+        reviewReasons: [],
+        idempotent: true,
+      };
+    }
+  }
+
   // 1) Horario efectivo
   const sched = await getEffectiveServices(p.restaurantId, p.date);
   const time = p.time;
@@ -666,6 +714,7 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   // 3) Mesa preferida -> validar que la zona existe y está activa
   let preferredZoneId = p.preferredZoneId ?? null;
   let preferredZoneName: string | null = null;
+  let preferredZoneTextual: string | null = null;
   if (preferredZoneId) {
     const { data: zRow } = await supabase
       .from("restaurant_zones")
@@ -677,6 +726,34 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
       preferredZoneId = null;
     } else {
       preferredZoneName = z.name;
+    }
+  }
+
+  // 3.b) Resolver preferredZoneName si no hay preferredZoneId.
+  const rawZoneName = (payload.preferredZoneName ?? "").trim();
+  if (!preferredZoneId && rawZoneName) {
+    const { data: zonesRows } = await supabase
+      .from("restaurant_zones")
+      .select("id, name, is_active")
+      .eq("restaurant_id", p.restaurantId)
+      .eq("is_active", true);
+    const zones = (zonesRows ?? []) as Array<{ id: string; name: string }>;
+    const target = rawZoneName.toLowerCase();
+    const exact = zones.filter((z) => z.name.toLowerCase() === target);
+    const partial =
+      exact.length === 0
+        ? zones.filter(
+            (z) =>
+              z.name.toLowerCase().includes(target) ||
+              target.includes(z.name.toLowerCase()),
+          )
+        : [];
+    const matches = exact.length > 0 ? exact : partial;
+    if (matches.length === 1) {
+      preferredZoneId = matches[0].id;
+      preferredZoneName = matches[0].name;
+    } else {
+      preferredZoneTextual = rawZoneName;
     }
   }
 
@@ -783,6 +860,9 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   }
   if (payload.callId) internalNotesParts.push(`Call ID: ${payload.callId}`);
   if (payload.transcript) internalNotesParts.push(`Transcript: ${payload.transcript.slice(0, 1000)}`);
+  if (preferredZoneTextual) {
+    internalNotesParts.push(`Preferencia de zona (texto): ${preferredZoneTextual}`);
+  }
 
   let tableId: string | null = null;
   let tableIds: string[] = [];
@@ -876,7 +956,7 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
     messageForAgent = `Reserva confirmada para ${personas(p.partySize)} el ${dateLabel} a las ${time}.`;
   }
 
-  return {
+  const response: VoiceReservationResponse = {
     success: true,
     reservationId,
     status,
@@ -886,6 +966,15 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
     messageForAgent,
     reviewReasons: rules.reviewReasons,
   };
+  console.log("[create-voice-reservation] result", {
+    callId: callId || null,
+    reservationId,
+    status,
+    assignedTableIds: assignedTables.map((t) => t.id),
+    reviewReasons: rules.reviewReasons,
+    blockingReason: null,
+  });
+  return response;
 }
 
 Deno.serve(async (req: Request) => {
@@ -909,6 +998,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     const result = await handle(payload);
+    if (result.status === "blocked" || (!result.success && !result.reservationId)) {
+      console.log("[create-voice-reservation] blocked", {
+        callId: payload.callId ?? null,
+        status: result.status,
+        blockingReason: result.blockingReason ?? null,
+        reviewReasons: result.reviewReasons,
+      });
+    }
     return json(result, result.success ? 200 : 200);
   } catch (err) {
     return json(
