@@ -377,14 +377,23 @@ async function createReservation(p: Payload) {
     preferredZone: p.preferred_zone ?? p.zone,
   });
 
-  if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
+  if (
+    assignment.reason === "no_capacity" ||
+    assignment.reason === "no_tables_configured" ||
+    assignment.reason === "zone_unavailable"
+  ) {
     return json({
       ok: false,
       error: assignment.reason,
-      message: assignment.reason === "no_tables_configured"
-        ? "El restaurante no tiene mesas configuradas."
-        : "No hay capacidad disponible para esa hora.",
+      message:
+        assignment.reason === "no_tables_configured"
+          ? "El restaurante no tiene mesas configuradas."
+          : assignment.reason === "zone_unavailable"
+            ? `No hay disponibilidad en la zona "${p.preferred_zone ?? p.zone}".`
+            : "No hay capacidad disponible para esa hora.",
       free_seats: assignment.freeSeats,
+      available_zones: assignment.debug?.available_zones ?? [],
+      availability_debug: assignment.debug,
     }, 409);
   }
 
@@ -750,15 +759,24 @@ async function updateReservation(p: Payload) {
       excludeReservationId: p.reservation_id,
     });
 
-    if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
+    if (
+      assignment.reason === "no_capacity" ||
+      assignment.reason === "no_tables_configured" ||
+      assignment.reason === "zone_unavailable"
+    ) {
       return json({
         ok: false,
         error: assignment.reason,
         reason: assignment.reason,
-        message: assignment.reason === "no_tables_configured"
-          ? "El restaurante no tiene mesas configuradas."
-          : "No hay capacidad disponible para esa hora.",
+        message:
+          assignment.reason === "no_tables_configured"
+            ? "El restaurante no tiene mesas configuradas."
+            : assignment.reason === "zone_unavailable"
+              ? `No hay disponibilidad en la zona "${newZone}".`
+              : "No hay capacidad disponible para esa hora.",
         free_seats: assignment.freeSeats,
+        available_zones: assignment.debug?.available_zones ?? [],
+        availability_debug: assignment.debug,
       }, 409);
     }
 
