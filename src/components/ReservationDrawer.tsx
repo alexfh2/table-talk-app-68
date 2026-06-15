@@ -10,6 +10,7 @@ import { getAgentSettings } from "@/lib/queries";
 import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
 import { evaluateReservationRules, appendReviewReasonsToNotes, parseReviewReasonsFromNotes } from "@/lib/reservationRules";
+import { syncReservationTables } from "@/lib/reservationTables";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -202,11 +203,23 @@ export function ReservationDrawer({
       status: (appliedStatus ?? v.status ?? "confirmed") as ReservationStatus,
       channel: (v.channel ?? "manual") as ReservationChannel,
     } as any;
-    const res = initial?.id
-      ? await supabase.from("reservations").update(payload).eq("id", initial.id)
-      : await supabase.from("reservations").insert(payload);
+    let savedId: string | null = initial?.id ?? null;
+    if (initial?.id) {
+      const { error } = await supabase.from("reservations").update(payload).eq("id", initial.id);
+      if (error) { setSaving(false); return toast.error(error.message); }
+    } else {
+      const { data, error } = await supabase
+        .from("reservations")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (error) { setSaving(false); return toast.error(error.message); }
+      savedId = (data as { id: string } | null)?.id ?? null;
+    }
+    if (savedId) {
+      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+    }
     setSaving(false);
-    if (res.error) return toast.error(res.error.message);
     if (initial) {
       toast.success("Cambios guardados.");
     } else if (appliedStatus === "requires_human") {
@@ -297,11 +310,23 @@ export function ReservationDrawer({
       restaurant_id: restaurantId,
     };
     if (opts.status) payload.status = opts.status;
-    const res = initial?.id
-      ? await supabase.from("reservations").update(payload).eq("id", initial.id)
-      : await supabase.from("reservations").insert(payload);
+    let savedId: string | null = initial?.id ?? null;
+    if (initial?.id) {
+      const { error } = await supabase.from("reservations").update(payload).eq("id", initial.id);
+      if (error) { setSaving(false); return toast.error(error.message); }
+    } else {
+      const { data, error } = await supabase
+        .from("reservations")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (error) { setSaving(false); return toast.error(error.message); }
+      savedId = (data as { id: string } | null)?.id ?? null;
+    }
+    if (savedId) {
+      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+    }
     setSaving(false);
-    if (res.error) return toast.error(res.error.message);
     toast.success(opts.successMsg);
     onOpenChange(false);
     onSaved();
