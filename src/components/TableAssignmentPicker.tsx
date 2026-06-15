@@ -1,11 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Loader2, List, LayoutGrid } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  List,
+  LayoutGrid,
+  Wine,
+  DoorOpen,
+  ChefHat,
+  Bath,
+  Bell,
+  Square as SquareIcon,
+  Shapes,
+} from "lucide-react";
 import {
   getAvailableTableOptions,
   type AvailableTableOptions,
 } from "@/lib/getAvailableTableOptions";
 import { supabase } from "@/integrations/supabase/client";
-import type { RestaurantTable, Zone, TableCombination } from "@/lib/types";
+import type {
+  RestaurantTable,
+  Zone,
+  TableCombination,
+  ZoneElement,
+  ZoneElementType,
+} from "@/lib/types";
+import { ZONE_ELEMENT_LABELS } from "@/lib/types";
 import {
   Popover,
   PopoverContent,
@@ -291,6 +310,16 @@ const DEFAULT_BY_SHAPE: Record<string, { w: number; h: number }> = {
   rectangle: { w: 18, h: 11 },
 };
 
+const ELEMENT_ICONS: Record<ZoneElementType, React.ComponentType<{ className?: string }>> = {
+  bar: Wine,
+  door: DoorOpen,
+  kitchen: ChefHat,
+  bathroom: Bath,
+  reception: Bell,
+  column: SquareIcon,
+  custom: Shapes,
+};
+
 function FloorPlanPicker({
   restaurantId,
   result,
@@ -306,6 +335,7 @@ function FloorPlanPicker({
 }) {
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [elements, setElements] = useState<ZoneElement[]>([]);
   const [loading, setLoading] = useState(true);
   const [popoverFor, setPopoverFor] = useState<string | null>(null);
 
@@ -315,10 +345,12 @@ function FloorPlanPicker({
     Promise.all([
       supabase.from("restaurant_zones").select("*").eq("restaurant_id", restaurantId).order("sort_order"),
       supabase.from("restaurant_tables").select("*").eq("restaurant_id", restaurantId),
-    ]).then(([z, t]) => {
+      supabase.from("restaurant_zone_elements").select("*").eq("restaurant_id", restaurantId),
+    ]).then(([z, t, e]) => {
       if (cancelled) return;
       setZones(((z.data ?? []) as Zone[]).filter((zz) => zz.is_active));
       setTables((t.data ?? []) as RestaurantTable[]);
+      setElements(((e.data ?? []) as unknown as ZoneElement[]).filter((el) => el.is_visible));
       setLoading(false);
     });
     return () => {
