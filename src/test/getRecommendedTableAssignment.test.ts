@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { computeRecommendation } from "@/lib/getRecommendedTableAssignment";
-import type { AvailableTableOptions } from "@/lib/getAvailableTableOptions";
+import {
+  computeRecommendation,
+  type CombinationContext,
+} from "@/lib/getRecommendedTableAssignment";
+import type {
+  AvailableTableOptions,
+  AvailableCombination,
+} from "@/lib/getAvailableTableOptions";
 import type { RestaurantTable, TableCombination, Zone } from "@/lib/types";
 
 function table(over: Partial<RestaurantTable> & { id: string; label: string; max_capacity: number; zone_id: string }): RestaurantTable {
@@ -40,6 +46,34 @@ function options(partial: Partial<AvailableTableOptions>): AvailableTableOptions
     },
     ...partial,
   };
+}
+
+function ctx(partial: Partial<CombinationContext> = {}): CombinationContext {
+  return {
+    combinations: [],
+    occupiedTableIds: new Set(),
+    ...partial,
+  };
+}
+
+function combo(
+  id: string,
+  tables: RestaurantTable[],
+  zone: Zone,
+  maxCap: number,
+  minCap = 2,
+): AvailableCombination {
+  const c: TableCombination = {
+    id,
+    restaurant_id: "r",
+    zone_id: zone.id,
+    name: tables.map((t) => t.label).join(" + "),
+    min_capacity: minCap,
+    max_capacity: maxCap,
+    is_active: true,
+    internal_notes: null,
+  };
+  return { combination: c, tables, zone };
 }
 
 describe("computeRecommendation", () => {
@@ -120,5 +154,101 @@ describe("computeRecommendation", () => {
     );
     expect(r.recommendedOption.type).toBe("individual_table");
     expect(r.confidence).toBe("medium");
+  });
+
+  it("prefers a table that is already part of a broken combo over breaking a fresh one", () => {
+    // M1+M2, M3+M4, M5+M6. M1 occupied → M1+M2 already broken.
+    // Small reservation (2p) on tables of capacity 2.
+    const m2 = table({ id: "m2", label: "M2", max_capacity: 2, zone_id: zoneA.id });
+    const m3 = table({ id: "m3", label: "M3", max_capacity: 2, zone_id: zoneA.id });
+    const m4 = table({ id: "m4", label: "M4", max_capacity: 2, zone_id: zoneA.id });
+    const m5 = table({ id: "m5", label: "M5", max_capacity: 2, zone_id: zoneA.id });
+    const m6 = table({ id: "m6", label: "M6", max_capacity: 2, zone_id: zoneA.id });
+    const r = computeRecommendation(
+      options({ individualTables: [m2, m3, m4, m5, m6] }),
+      2,
+      null,
+      ctx({
+        combinations: [
+          { id: "c12", tableIds: ["m1", "m2"], max_capacity: 4 },
+          { id: "c34", tableIds: ["m3", "m4"], max_capacity: 4 },
+          { id: "c56", tableIds: ["m5", "m6"], max_capacity: 4 },
+        ],
+        occupiedTableIds: new Set(["m1"]),
+      }),
+    );
+    expect(r.recommendedOption.type).toBe("individual_table");
+    if (r.recommendedOption.type === "individual_table") {
+      expect(r.recommendedOption.table.id).toBe("m2");
+    }
+  });
+
+  it("with all combos free, picks any small table but penalizes equally", () => {
+    // 3 small free tables each belonging to a free combo. Any pick breaks one combo.
+    // We just check that a valid individual is recommended and not crashes.
+    const m1 = table({ id: "m1", label: "M1", max_capacity: 2, zone_id: zoneA.id });
+    const m3 = table({ id: "m3", label: "M3", max_capacity: 2, zone_id: zoneA.id });
+    const r = computeRecommendation(
+      options({ individualTables: [m1, m3] }),
+      2,
+      null,
+      ctx({
+        combinations: [
+          { id: "c12", tableIds: ["m1", "m2"], max_capacity: 4 },
+          { id: "c34", tableIds: ["m3", "m4"], max_capacity: 4 },
+        ],
+      }),
+    );
+    expect(r.recommendedOption.type).toBe("individual_table");
+  });
+
+  it("penalizes high-combinability tables vs equivalent less-strategic ones", () => {
+    // tHub belongs to 3 combos. tSolo belongs to none. Equal capacity & waste.
+    const tHub = table({ id: "tHub", label: "H", max_capacity: 2, zone_id: zoneA.id });
+    const tSolo = table({ id: "tSolo", label: "S", max_capacity: 2, zone_id: zoneA.id });
+    const r = computeRecommendation(
+      options({ individualTables: [tHub, tSolo] }),
+      2,
+      null,
+      ctx({
+        combinations: [
+          { id: "cA", tableIds: ["tHub", "x1"], max_capacity: 4 },
+          { id: "cB", tableIds: ["tHub", "x2"], max_capacity: 4 },
+          { id: "cC", tableIds: ["tHub", "x3"], max_capacity: 4 },
+        ],
+        // x1..x3 occupied so cA/cB/cC are already broken — eliminates break penalty
+        // and isolates the high-combinability penalty.
+        occupiedTableIds: new Set(["x1", "x2", "x3"]),
+      }),
+    );
+    expect(r.recommendedOption.type).toBe("individual_table");
+    if (r.recommendedOption.type === "individual_table") {
+      expect(r.recommendedOption.table.id).toBe("tSolo");
+    }
+  });
+
+  it("recommends a combination for a large party when it fits best", () => {
+    const t2 = table({ id: "t2", label: "T2", max_capacity: 2, zone_id: zoneA.id });
+    const t1 = table({ id: "t1", label: "T1", max_capacity: 2, zone_id: zoneA.id });
+    const c = combo("c1", [t1, t2], zoneA, 4, 3);
+    const r = computeRecommendation(
+      options({ individualTables: [], combinations: [c] }),
+      4,
+      null,
+    );
+    expect(r.recommendedOption.type).toBe("table_combination");
+  });
+
+  it("includes debug breakdown when requested", () => {
+    const t = table({ id: "t", label: "T", max_capacity: 2, zone_id: zoneA.id });
+    const r = computeRecommendation(
+      options({ individualTables: [t] }),
+      2,
+      null,
+      ctx(),
+      { withDebug: true },
+    );
+    expect(r.debug).toBeTruthy();
+    expect(r.debug!.scored[0].score).toBeTruthy();
   });
 });

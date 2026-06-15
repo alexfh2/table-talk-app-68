@@ -3,18 +3,30 @@ import {
   type AvailableCombination,
   type AvailableTableOptions,
 } from "@/lib/getAvailableTableOptions";
-import type { RestaurantTable } from "@/lib/types";
+import { supabase } from "@/integrations/supabase/client";
+import type { RestaurantTable, TableCombination } from "@/lib/types";
 
 export type RecommendedOptionType =
   | "individual_table"
   | "table_combination"
   | "none";
 
+export interface ScoreBreakdown {
+  total: number;
+  waste: number;
+  combinationBreakPenalty: number;
+  alreadyBrokenCombinationBonus: number;
+  highCombinabilityPenalty: number;
+  preferredZonePenalty: number;
+  typePenalty: number;
+}
+
 export interface RecommendedIndividual {
   type: "individual_table";
   table: RestaurantTable;
   waste: number;
   inPreferredZone: boolean;
+  score?: ScoreBreakdown;
 }
 
 export interface RecommendedCombination {
@@ -22,6 +34,7 @@ export interface RecommendedCombination {
   combination: AvailableCombination;
   waste: number;
   inPreferredZone: boolean;
+  score?: ScoreBreakdown;
 }
 
 export interface RecommendedNone {
@@ -38,6 +51,26 @@ export interface RecommendedAssignment {
   alternativeOptions: Array<RecommendedIndividual | RecommendedCombination>;
   reason: string;
   confidence: "high" | "medium" | "low";
+  debug?: {
+    scored: Array<RecommendedIndividual | RecommendedCombination>;
+    context: CombinationContext;
+  };
+}
+
+/**
+ * Context describing every active combination + which tables are
+ * currently occupied, used to compute "preservation" penalties so we
+ * avoid breaking large combos for small reservations.
+ */
+export interface CombinationContext {
+  /** Active combinations with their member table ids. */
+  combinations: Array<{
+    id: string;
+    tableIds: string[];
+    max_capacity: number;
+  }>;
+  /** Set of table ids currently occupied at this slot. */
+  occupiedTableIds: Set<string>;
 }
 
 /**
@@ -55,6 +88,10 @@ export async function getRecommendedTableAssignment(opts: {
   slotMinutes?: number;
   /** Optional injection of pre-computed options (tests / shared calls). */
   options?: AvailableTableOptions;
+  /** Optional pre-computed combination context (tests). */
+  context?: CombinationContext;
+  /** When true, includes scoring debug per option. */
+  withDebug?: boolean;
 }): Promise<RecommendedAssignment> {
   const partySize = opts.partySize;
   const preferredZoneId = opts.preferredZoneId ?? null;
@@ -70,7 +107,47 @@ export async function getRecommendedTableAssignment(opts: {
       slotMinutes: opts.slotMinutes,
     }));
 
-  return computeRecommendation(available, partySize, preferredZoneId);
+  const context =
+    opts.context ??
+    (await loadCombinationContext(opts.restaurantId, available));
+
+  return computeRecommendation(available, partySize, preferredZoneId, context, {
+    withDebug: opts.withDebug,
+  });
+}
+
+/** Loads all active combinations + occupancy for the slot. */
+async function loadCombinationContext(
+  restaurantId: string,
+  available: AvailableTableOptions,
+): Promise<CombinationContext> {
+  const [{ data: combosData }, { data: comboTablesData }] = await Promise.all([
+    supabase
+      .from("table_combinations")
+      .select("*")
+      .eq("restaurant_id", restaurantId),
+    supabase.from("table_combination_tables").select("*"),
+  ]);
+  const combos = ((combosData ?? []) as TableCombination[]).filter(
+    (c) => c.is_active,
+  );
+  const byCombo = new Map<string, string[]>();
+  for (const ct of (comboTablesData ?? []) as Array<{
+    combination_id: string;
+    table_id: string;
+  }>) {
+    const arr = byCombo.get(ct.combination_id) ?? [];
+    arr.push(ct.table_id);
+    byCombo.set(ct.combination_id, arr);
+  }
+  return {
+    combinations: combos.map((c) => ({
+      id: c.id,
+      tableIds: byCombo.get(c.id) ?? [],
+      max_capacity: c.max_capacity,
+    })),
+    occupiedTableIds: new Set(available.debug.occupiedTableIds),
+  };
 }
 
 /** Pure scoring function — exported for testing. */
@@ -78,21 +155,98 @@ export function computeRecommendation(
   available: AvailableTableOptions,
   partySize: number,
   preferredZoneId: string | null,
+  context: CombinationContext = { combinations: [], occupiedTableIds: new Set() },
+  flags: { withDebug?: boolean } = {},
 ): RecommendedAssignment {
-  const indivs: RecommendedIndividual[] = available.individualTables.map((t) => ({
-    type: "individual_table",
-    table: t,
-    waste: Math.max(0, t.max_capacity - partySize),
-    inPreferredZone: !!preferredZoneId && t.zone_id === preferredZoneId,
-  }));
+  // Pre-compute combination membership data per table.
+  const combosByTable = new Map<string, typeof context.combinations>();
+  for (const c of context.combinations) {
+    for (const tid of c.tableIds) {
+      const arr = combosByTable.get(tid) ?? [];
+      arr.push(c);
+      combosByTable.set(tid, arr);
+    }
+  }
 
-  const combos: RecommendedCombination[] = available.combinations.map((c) => ({
-    type: "table_combination",
-    combination: c,
-    waste: Math.max(0, c.combination.max_capacity - partySize),
-    inPreferredZone:
-      !!preferredZoneId && c.tables.every((t) => t.zone_id === preferredZoneId),
-  }));
+  const indivs: RecommendedIndividual[] = available.individualTables.map((t) => {
+    const waste = Math.max(0, t.max_capacity - partySize);
+    const inPreferredZone = !!preferredZoneId && t.zone_id === preferredZoneId;
+    const memberCombos = combosByTable.get(t.id) ?? [];
+
+    let breaksFullyFree = 0;
+    let belongsToBroken = false;
+    for (const c of memberCombos) {
+      const others = c.tableIds.filter((id) => id !== t.id);
+      if (others.length === 0) continue;
+      const anyOccupied = others.some((id) =>
+        context.occupiedTableIds.has(id),
+      );
+      if (anyOccupied) belongsToBroken = true;
+      else breaksFullyFree += 1;
+    }
+
+    const combinationBreakPenalty = breaksFullyFree * 2;
+    // Only reward "broken combo" tables when they would otherwise carry no
+    // intrinsic advantage — the bonus exists to break ties against tables
+    // that break a fresh combo, not to outrank neutral non-combo tables.
+    const alreadyBrokenCombinationBonus =
+      belongsToBroken && breaksFullyFree === 0 ? -0.25 : 0;
+    const highCombinabilityPenalty =
+      memberCombos.length > 1 ? (memberCombos.length - 1) * 0.5 : 0;
+    const preferredZonePenalty =
+      preferredZoneId && !inPreferredZone ? 3 : 0;
+    const typePenalty = 0;
+
+    const total =
+      waste +
+      combinationBreakPenalty +
+      alreadyBrokenCombinationBonus +
+      highCombinabilityPenalty +
+      preferredZonePenalty +
+      typePenalty;
+
+    return {
+      type: "individual_table",
+      table: t,
+      waste,
+      inPreferredZone,
+      score: {
+        total,
+        waste,
+        combinationBreakPenalty,
+        alreadyBrokenCombinationBonus,
+        highCombinabilityPenalty,
+        preferredZonePenalty,
+        typePenalty,
+      },
+    } satisfies RecommendedIndividual;
+  });
+
+  const combos: RecommendedCombination[] = available.combinations.map((c) => {
+    const waste = Math.max(0, c.combination.max_capacity - partySize);
+    const inPreferredZone =
+      !!preferredZoneId && c.tables.every((t) => t.zone_id === preferredZoneId);
+    const preferredZonePenalty =
+      preferredZoneId && !inPreferredZone ? 3 : 0;
+    // Slight tie-breaker preference for individual tables on equal waste.
+    const typePenalty = 0.5;
+    const total = waste + typePenalty + preferredZonePenalty;
+    return {
+      type: "table_combination",
+      combination: c,
+      waste,
+      inPreferredZone,
+      score: {
+        total,
+        waste,
+        combinationBreakPenalty: 0,
+        alreadyBrokenCombinationBonus: 0,
+        highCombinabilityPenalty: 0,
+        preferredZonePenalty,
+        typePenalty,
+      },
+    } satisfies RecommendedCombination;
+  });
 
   if (indivs.length === 0 && combos.length === 0) {
     return {
@@ -103,16 +257,9 @@ export function computeRecommendation(
     };
   }
 
-  // Score: lower is better.
-  // Individual tables get a bonus over combinations of equal waste so we
-  // prefer single tables when they fit similarly.
-  const score = (o: RecommendedIndividual | RecommendedCombination) => {
-    const zonePenalty = preferredZoneId && !o.inPreferredZone ? 100 : 0;
-    const typePenalty = o.type === "table_combination" ? 0.5 : 0;
-    return o.waste + typePenalty + zonePenalty;
-  };
-
-  const all = [...indivs, ...combos].sort((a, b) => score(a) - score(b));
+  const all = [...indivs, ...combos].sort(
+    (a, b) => (a.score?.total ?? 0) - (b.score?.total ?? 0),
+  );
   const recommended = all[0];
   const alternatives = all.slice(1, 4);
 
@@ -134,12 +281,20 @@ export function computeRecommendation(
 
   const reason = buildReason(recommended, partySize, preferredZoneId);
 
-  return {
+  const result: RecommendedAssignment = {
     recommendedOption: recommended,
     alternativeOptions: alternatives,
     reason,
     confidence,
   };
+  if (flags.withDebug) {
+    result.debug = { scored: all, context };
+  }
+  // Strip score from non-debug callers' option objects to keep types clean.
+  if (!flags.withDebug) {
+    for (const o of all) delete (o as { score?: ScoreBreakdown }).score;
+  }
+  return result;
 }
 
 function buildReason(
