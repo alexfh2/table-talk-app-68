@@ -80,6 +80,7 @@ export function TableAssignmentPicker({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AvailableTableOptions | null>(null);
   const [view, setView] = useState<"list" | "plan">("list");
+  const [zones, setZones] = useState<Zone[]>([]);
 
   const ready = !!(restaurantId && date && time && partySize > 0);
 
@@ -110,6 +111,21 @@ export function TableAssignmentPicker({
       cancelled = true;
     };
   }, [ready, restaurantId, date, time, partySize, excludeReservationId]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    let cancelled = false;
+    supabase
+      .from("restaurant_zones")
+      .select("*")
+      .eq("restaurant_id", restaurantId)
+      .then(({ data }) => {
+        if (!cancelled) setZones((data ?? []) as Zone[]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId]);
 
   const currentStillAvailable = useMemo(() => {
     if (!result || value.kind === "none") return true;
@@ -159,6 +175,7 @@ export function TableAssignmentPicker({
           recommendation={recommendation}
           matchesSelection={matchesRecommendation}
           onApply={applyRecommendation}
+          zones={zones}
         />
       )}
 
@@ -332,31 +349,29 @@ function RecommendationCard({
   recommendation,
   matchesSelection,
   onApply,
+  zones,
 }: {
   recommendation: RecommendedAssignment;
   matchesSelection: boolean;
   onApply: () => void;
+  zones: Zone[];
 }) {
   const opt = recommendation.recommendedOption;
   const none = opt.type === "none";
 
   let title = "";
-  let subtitle = "";
+  let capacity = "";
   if (opt.type === "individual_table") {
     const t = opt.table;
-    title = t.label;
-    subtitle = `${t.min_capacity}–${t.max_capacity} personas`;
+    const zoneName = zones.find((z) => z.id === t.zone_id)?.name;
+    title = zoneName ? `${t.label} · ${zoneName}` : t.label;
+    capacity = `${t.min_capacity}–${t.max_capacity} personas`;
   } else if (opt.type === "table_combination") {
     const c = opt.combination;
     const labels = c.tables.map((tt) => tt.label).join(" + ");
-    const zone = c.zone?.name;
-    title = labels;
-    subtitle = [
-      zone,
-      `${c.combination.min_capacity ?? 1}–${c.combination.max_capacity} personas`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const zoneName = c.zone?.name;
+    title = zoneName ? `${labels} · ${zoneName}` : labels;
+    capacity = `${c.combination.min_capacity ?? 1}–${c.combination.max_capacity} personas`;
   }
 
   return (
@@ -376,11 +391,9 @@ function RecommendationCard({
               <div className="mt-0.5 text-sm font-medium text-foreground truncate">
                 {title}
               </div>
-              {subtitle && (
-                <div className="text-xs text-muted-foreground truncate">
-                  {subtitle}
-                </div>
-              )}
+              <div className="text-xs text-muted-foreground truncate">
+                {capacity}
+              </div>
               <p className="mt-1 text-xs text-muted-foreground">
                 {recommendation.reason}
               </p>
