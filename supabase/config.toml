@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.retell-webhook]
 verify_jwt = false
+
+[functions.create-voice-reservation]
+verify_jwt = false

@@ -146,6 +146,8 @@ export interface AgentSettings {
   out_of_hours_manual_policy: "block";
   out_of_hours_voice_policy: "requires_review";
   slot_almost_full_threshold: number;
+  voice_table_autoassign_mode: "off" | "high_confidence_only" | "any_available";
+  voice_no_table_fallback: "requires_human" | "confirm_without_table" | "block";
 }
 
 export interface NotificationSettings {

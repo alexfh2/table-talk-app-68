@@ -35,6 +35,8 @@ export function ConfirmationRulesPanel({ restaurantId }: { restaurantId: string 
         voice_reservation_policy: s.voice_reservation_policy,
         missing_phone_policy: s.missing_phone_policy,
         slot_almost_full_threshold: s.slot_almost_full_threshold,
+        voice_table_autoassign_mode: s.voice_table_autoassign_mode,
+        voice_no_table_fallback: s.voice_no_table_fallback,
       })
       .eq("id", s.id);
     setSaving(false);
@@ -119,6 +121,45 @@ export function ConfirmationRulesPanel({ restaurantId }: { restaurantId: string 
             <li>· Reservas manuales: <span className="text-foreground">Bloquear</span></li>
             <li>· Reservas por voz: <span className="text-foreground">Guardar como requiere revisión</span></li>
           </ul>
+        </section>
+
+        <div className="space-y-1 pt-2 border-t">
+          <h3 className="text-sm font-semibold">Autoasignación de mesas por voz</h3>
+          <p className="text-xs text-muted-foreground">
+            Cómo asigna mesa el agente cuando crea una reserva por voz.
+          </p>
+        </div>
+        <section className="space-y-2">
+          <Label>Autoasignar mesa en reservas por voz</Label>
+          <Select
+            value={s.voice_table_autoassign_mode ?? "high_confidence_only"}
+            onValueChange={(v) =>
+              setS({ ...s, voice_table_autoassign_mode: v as AgentSettings["voice_table_autoassign_mode"] })
+            }
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">No, dejar sin asignar</SelectItem>
+              <SelectItem value="high_confidence_only">Sí, solo si hay una recomendación clara</SelectItem>
+              <SelectItem value="any_available">Sí, siempre que haya una opción disponible</SelectItem>
+            </SelectContent>
+          </Select>
+        </section>
+        <section className="space-y-2">
+          <Label>Si no hay mesa clara</Label>
+          <Select
+            value={s.voice_no_table_fallback ?? "requires_human"}
+            onValueChange={(v) =>
+              setS({ ...s, voice_no_table_fallback: v as AgentSettings["voice_no_table_fallback"] })
+            }
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="requires_human">Guardar como requiere revisión</SelectItem>
+              <SelectItem value="confirm_without_table">Confirmar sin mesa asignada</SelectItem>
+              <SelectItem value="block">No confirmar y pedir otra hora</SelectItem>
+            </SelectContent>
+          </Select>
         </section>
 
         <div className="space-y-1 pt-2 border-t">
