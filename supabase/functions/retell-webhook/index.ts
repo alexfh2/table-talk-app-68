@@ -189,10 +189,34 @@ async function validateSlot(restaurantId: string, date: string, time: string) {
 }
 
 type AutoAssign =
-  | { tableId: string; needsReview: false; tableLabel: string; reason: "assigned"; freeSeats: number }
-  | { tableId: null; needsReview: true; reason: "needs_human_review"; freeSeats: number }
-  | { tableId: null; needsReview: false; reason: "no_capacity"; freeSeats: number }
-  | { tableId: null; needsReview: false; reason: "no_tables_configured"; freeSeats: 0 };
+  | { tableId: string; needsReview: false; tableLabel: string; reason: "assigned"; freeSeats: number; debug?: AvailabilityDebug }
+  | { tableId: null; needsReview: true; reason: "needs_human_review"; freeSeats: number; debug?: AvailabilityDebug }
+  | { tableId: null; needsReview: false; reason: "no_capacity"; freeSeats: number; debug?: AvailabilityDebug }
+  | { tableId: null; needsReview: false; reason: "no_tables_configured"; freeSeats: 0; debug?: AvailabilityDebug }
+  | { tableId: null; needsReview: false; reason: "zone_unavailable"; freeSeats: number; debug?: AvailabilityDebug };
+
+type AvailabilityDebug = {
+  preferred_zone_received: string | null;
+  normalized_zone: string | null;
+  matched_zone_ids: string[];
+  total_tables: number;
+  active_tables: number;
+  tables_after_zone_filter: number;
+  occupied_table_ids: string[];
+  free_tables: number;
+  candidates_count: number;
+  free_seats: number;
+  available_zones: Array<{ id: string; name: string }>;
+};
+
+function normalizeZoneText(s: string | null | undefined): string {
+  if (!s) return "";
+  return s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
 
 const DEFAULT_SLOT_MIN = 120;
 
@@ -214,10 +238,20 @@ async function autoAssignTable(opts: {
   const time = opts.time.slice(0, 5);
   const window = opts.slotMinutes ?? DEFAULT_SLOT_MIN;
 
-  const [{ data: tables }, { data: reservations }] = await Promise.all([
+  const preferredRaw = (opts.preferredZone ?? "").trim();
+  const preferredNorm = normalizeZoneText(preferredRaw);
+  const noPreferenceTokens = new Set(["", "sin preferencia", "ninguna", "indiferente", "cualquiera", "sin preferencias"]);
+  const hasPreference = !noPreferenceTokens.has(preferredNorm);
+
+  const [zonesRes, tablesRes, reservationsRes] = await Promise.all([
+    supabase
+      .from("restaurant_zones")
+      .select("id, name, is_active, restaurant_id")
+      .eq("restaurant_id", opts.restaurantId)
+      .eq("is_active", true),
     supabase
       .from("restaurant_tables")
-      .select("id, label, min_capacity, max_capacity, capacity, sort_order, zone_id, restaurant_zones(name)")
+      .select("id, restaurant_id, zone_id, label, min_capacity, max_capacity, sort_order, is_active")
       .eq("restaurant_id", opts.restaurantId)
       .eq("is_active", true),
     supabase
@@ -228,65 +262,103 @@ async function autoAssignTable(opts: {
       .not("status", "in", "(cancelled,no_show)"),
   ]);
 
-  const rawTables = (tables ?? []) as Array<{
+  const activeZones = (zonesRes.data ?? []) as Array<{ id: string; name: string; is_active: boolean }>;
+  const activeZoneIds = new Set(activeZones.map((z) => z.id));
+  const rawTables = (tablesRes.data ?? []) as Array<{
     id: string; label: string; min_capacity: number; max_capacity: number | null;
-    capacity?: number | null; sort_order: number | null;
-    zone_id: string; restaurant_zones: { name: string } | null;
+    sort_order: number | null; zone_id: string | null; is_active: boolean;
   }>;
-  // Normalize capacity: prefer max_capacity, fall back to capacity if present.
-  const activeTables = rawTables.map((t) => ({
-    ...t,
-    max_capacity: t.max_capacity ?? t.capacity ?? 0,
-  }));
+  const totalTables = rawTables.length;
+  // Only consider tables whose zone is active (or that have no zone -> include).
+  const activeTables = rawTables
+    .filter((t) => !t.zone_id || activeZoneIds.has(t.zone_id))
+    .map((t) => ({ ...t, max_capacity: t.max_capacity ?? 0 }));
+
+  const availableZones = activeZones.map((z) => ({ id: z.id, name: z.name }));
 
   if (activeTables.length === 0) {
-    return { tableId: null, needsReview: false, reason: "no_tables_configured", freeSeats: 0 };
+    return {
+      tableId: null,
+      needsReview: false,
+      reason: "no_tables_configured",
+      freeSeats: 0,
+      debug: {
+        preferred_zone_received: preferredRaw || null,
+        normalized_zone: hasPreference ? preferredNorm : null,
+        matched_zone_ids: [],
+        total_tables: totalTables,
+        active_tables: 0,
+        tables_after_zone_filter: 0,
+        occupied_table_ids: [],
+        free_tables: 0,
+        candidates_count: 0,
+        free_seats: 0,
+        available_zones: availableZones,
+      },
+    };
   }
 
+  // Zone matching: name normalized equals OR contains preference OR preference contains name.
+  let matchedZoneIds: string[] = [];
+  if (hasPreference) {
+    matchedZoneIds = activeZones
+      .filter((z) => {
+        const n = normalizeZoneText(z.name);
+        return n === preferredNorm || n.includes(preferredNorm) || preferredNorm.includes(n);
+      })
+      .map((z) => z.id);
+  }
+
+  const zoneFilterApplied = hasPreference && matchedZoneIds.length > 0;
+  const tablesAfterZone = zoneFilterApplied
+    ? activeTables.filter((t) => t.zone_id && matchedZoneIds.includes(t.zone_id))
+    : activeTables;
+
   const occupied = new Set<string>();
-  for (const r of reservations ?? []) {
+  for (const r of reservationsRes.data ?? []) {
     if (!r.table_id) continue;
     if (opts.excludeReservationId && r.id === opts.excludeReservationId) continue;
     if (minutesBetween(time, String(r.reservation_time)) < window) occupied.add(r.table_id);
   }
 
-  const free = activeTables.filter((t) => !occupied.has(t.id));
+  const free = tablesAfterZone.filter((t) => !occupied.has(t.id));
   const freeSeats = free.reduce((s, t) => s + (t.max_capacity ?? 0), 0);
 
-  const preferred = opts.preferredZone?.trim().toLowerCase() ?? "";
-  const zoneExists = preferred
-    ? activeTables.some((t) => (t.restaurant_zones?.name ?? "").trim().toLowerCase() === preferred)
-    : false;
-  // If the requested zone doesn't match any real zone, ignore it (fallback to no preference)
-  // instead of artificially limiting candidates.
-  const effectivePreferred = preferred && zoneExists ? preferred : "";
-  const inZone = (t: typeof activeTables[number]) =>
-    effectivePreferred
-      ? (t.restaurant_zones?.name ?? "").trim().toLowerCase() === effectivePreferred
-      : false;
-
   const candidates = free
-    .filter((t) => t.max_capacity >= opts.partySize)
+    .filter((t) => (t.max_capacity ?? 0) >= opts.partySize)
     .sort((a, b) => {
-      // 1) Preferred zone first
-      if (effectivePreferred) {
-        const az = inZone(a) ? 0 : 1;
-        const bz = inZone(b) ? 0 : 1;
-        if (az !== bz) return az - bz;
-      }
-      // 2) Smallest table that fits
-      if (a.max_capacity !== b.max_capacity) return a.max_capacity - b.max_capacity;
+      if (a.max_capacity !== b.max_capacity) return (a.max_capacity ?? 0) - (b.max_capacity ?? 0);
       return (a.sort_order ?? 0) - (b.sort_order ?? 0);
     });
 
+  const debug: AvailabilityDebug = {
+    preferred_zone_received: preferredRaw || null,
+    normalized_zone: hasPreference ? preferredNorm : null,
+    matched_zone_ids: matchedZoneIds,
+    total_tables: totalTables,
+    active_tables: activeTables.length,
+    tables_after_zone_filter: tablesAfterZone.length,
+    occupied_table_ids: Array.from(occupied),
+    free_tables: free.length,
+    candidates_count: candidates.length,
+    free_seats: freeSeats,
+    available_zones: availableZones,
+  };
+
   if (candidates.length > 0) {
     const t = candidates[0];
-    return { tableId: t.id, needsReview: false, tableLabel: t.label, reason: "assigned", freeSeats };
+    return { tableId: t.id, needsReview: false, tableLabel: t.label, reason: "assigned", freeSeats, debug };
   }
+
+  // If preference was given but no matching zone exists, surface zone_unavailable.
+  if (hasPreference && matchedZoneIds.length === 0) {
+    return { tableId: null, needsReview: false, reason: "zone_unavailable", freeSeats, debug };
+  }
+
   if (freeSeats >= opts.partySize) {
-    return { tableId: null, needsReview: true, reason: "needs_human_review", freeSeats };
+    return { tableId: null, needsReview: true, reason: "needs_human_review", freeSeats, debug };
   }
-  return { tableId: null, needsReview: false, reason: "no_capacity", freeSeats };
+  return { tableId: null, needsReview: false, reason: "no_capacity", freeSeats, debug };
 }
 
 async function createReservation(p: Payload) {
