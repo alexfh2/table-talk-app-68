@@ -10,7 +10,13 @@ import type { Reservation, ReservationStatus, ReservationChannel, Zone, Restaura
 import { RESERVATION_STATUS_LABELS, CHANNEL_LABELS } from "@/lib/types";
 import { toast } from "sonner";
 import { autoAssignTable } from "@/lib/autoAssignTable";
-import { syncReservationTables } from "@/lib/reservationTables";
+import { syncReservationTables, getReservationTableIds } from "@/lib/reservationTables";
+import {
+  TableAssignmentPicker,
+  selectionFromExisting,
+  persistFromSelection,
+  type TableSelection,
+} from "@/components/TableAssignmentPicker";
 
 export function ReservationFormDialog({
   open, onOpenChange, restaurantId, initial, onSaved,
@@ -25,6 +31,7 @@ export function ReservationFormDialog({
   const [saving, setSaving] = useState(false);
   const [zones, setZones] = useState<Zone[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [tableSelection, setTableSelection] = useState<TableSelection>({ kind: "none" });
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -44,12 +51,30 @@ export function ReservationFormDialog({
     });
   }, [initial, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (!initial?.id) {
+      setTableSelection({ kind: "none" });
+      return;
+    }
+    let cancelled = false;
+    getReservationTableIds(initial.id).then((ids) => {
+      if (cancelled) return;
+      setTableSelection(
+        selectionFromExisting({ tableIds: ids, fallbackTableId: initial.table_id ?? null }),
+      );
+    });
+    return () => { cancelled = true; };
+  }, [open, initial?.id, initial?.table_id]);
+
   async function save() {
     setSaving(true);
-    const payload: any = { ...v, restaurant_id: restaurantId };
+    const { tableId: selTableId, tableIds: selTableIds } = persistFromSelection(tableSelection);
+    const payload: any = { ...v, restaurant_id: restaurantId, table_id: selTableId };
 
-    // If user did not pick a table, try to auto-assign the smallest table that fits.
-    if (!initial?.id && !payload.table_id && payload.reservation_date && payload.reservation_time && payload.party_size) {
+    // If user did not pick anything, try to auto-assign the smallest table that fits.
+    let finalTableIds = selTableIds;
+    if (!initial?.id && tableSelection.kind === "none" && payload.reservation_date && payload.reservation_time && payload.party_size) {
       const res = await autoAssignTable({
         restaurantId,
         date: payload.reservation_date,
@@ -58,15 +83,14 @@ export function ReservationFormDialog({
       });
       if ("tableLabel" in res) {
         payload.table_id = res.tableId;
+        finalTableIds = [res.tableId];
         toast.message(`Mesa asignada automáticamente: ${res.tableLabel}`);
       } else if (res.needsReview) {
         payload.status = "requires_human";
         payload.internal_notes = [payload.internal_notes, "⚠ Sin mesa única que encaje. Requiere reasignación manual."].filter(Boolean).join("\n");
         toast.warning("No hay una mesa única que encaje. Reserva marcada para revisión humana.");
-      } else {
-        setSaving(false);
-        return toast.error("No hay capacidad disponible para esa hora.");
       }
+      // If no capacity: do not block — let the reservation be saved without a table.
     }
 
     let savedId: string | null = initial?.id ?? null;
@@ -83,7 +107,7 @@ export function ReservationFormDialog({
       savedId = (data as { id: string } | null)?.id ?? null;
     }
     if (savedId) {
-      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+      await syncReservationTables(savedId, finalTableIds);
     }
     setSaving(false);
     toast.success(initial ? "Reserva actualizada" : "Reserva creada");
