@@ -624,6 +624,27 @@ export default function RestaurantDashboard() {
                     </button>
                   ))}
                 </div>
+                <div role="tablist" className="inline-flex rounded-full border border-border bg-secondary/30 p-0.5">
+                  {[
+                    { v: "agenda" as const, label: "Agenda" },
+                    { v: "map" as const, label: "Mapa" },
+                  ].map((o) => (
+                    <button
+                      key={o.v}
+                      role="tab"
+                      aria-selected={view === o.v}
+                      onClick={() => setView(o.v)}
+                      className={cn(
+                        "px-3.5 py-1.5 text-xs font-medium rounded-full transition-colors",
+                        view === o.v
+                          ? "bg-card text-foreground shadow-[0_1px_0_hsl(var(--border))]"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
                 <span className="inline-flex items-center gap-1.5 text-xs text-success">
                   <span className="h-1.5 w-1.5 rounded-full bg-success" /> Agente conectado
                 </span>
