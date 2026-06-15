@@ -135,8 +135,17 @@ export function TableAssignmentPicker({
 
   const recommendation: RecommendedAssignment | null = useMemo(() => {
     if (!result) return null;
-    return computeRecommendation(result, partySize, preferredZoneId ?? null);
-  }, [result, partySize, preferredZoneId]);
+    const preferredZoneName = preferredZoneId
+      ? zones.find((z) => z.id === preferredZoneId)?.name ?? null
+      : null;
+    return computeRecommendation(
+      result,
+      partySize,
+      preferredZoneId ?? null,
+      undefined,
+      { preferredZoneName },
+    );
+  }, [result, partySize, preferredZoneId, zones]);
 
   if (!ready) {
     return (
