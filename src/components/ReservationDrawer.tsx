@@ -10,7 +10,13 @@ import { getAgentSettings } from "@/lib/queries";
 import { loadScheduleContext, effectiveDay, type ScheduleContext } from "@/lib/effectiveSchedule";
 import type { Reservation, Zone, RestaurantTable, ReservationStatus, ReservationChannel, ScheduleRow, AgentSettings } from "@/lib/types";
 import { evaluateReservationRules, appendReviewReasonsToNotes, parseReviewReasonsFromNotes } from "@/lib/reservationRules";
-import { syncReservationTables } from "@/lib/reservationTables";
+import { syncReservationTables, getReservationTableIds } from "@/lib/reservationTables";
+import {
+  TableAssignmentPicker,
+  selectionFromExisting,
+  persistFromSelection,
+  type TableSelection,
+} from "@/components/TableAssignmentPicker";
 import { toast } from "sonner";
 import { AlertCircle, Ban, CheckCircle2, Clock, Minus, Plus, UserX, X } from "lucide-react";
 import {
@@ -65,6 +71,7 @@ export function ReservationDrawer({
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
   const [confirmWithWarnings, setConfirmWithWarnings] = useState(false);
+  const [tableSelection, setTableSelection] = useState<TableSelection>({ kind: "none" });
 
   useEffect(() => {
     if (!open || !restaurantId) return;
@@ -90,6 +97,25 @@ export function ReservationDrawer({
     });
     setStatusManuallyChanged(false);
   }, [initial, open, createDefaults]);
+
+  // Initialize table selection from the loaded reservation (using reservation_tables when present).
+  useEffect(() => {
+    if (!open) return;
+    if (!initial?.id) {
+      setTableSelection({ kind: "none" });
+      return;
+    }
+    let cancelled = false;
+    getReservationTableIds(initial.id).then((ids) => {
+      if (cancelled) return;
+      setTableSelection(
+        selectionFromExisting({ tableIds: ids, fallbackTableId: initial.table_id ?? null }),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, initial?.id, initial?.table_id]);
 
   // Load same-day reservations to compute availability
   useEffect(() => {
@@ -194,6 +220,7 @@ export function ReservationDrawer({
       }
     }
     setSaving(true);
+    const { tableId: selTableId, tableIds: selTableIds } = persistFromSelection(tableSelection);
     const payload = {
       ...v,
       ...extra,
@@ -202,6 +229,7 @@ export function ReservationDrawer({
       // Defaults for manual creation
       status: (appliedStatus ?? v.status ?? "confirmed") as ReservationStatus,
       channel: (v.channel ?? "manual") as ReservationChannel,
+      table_id: selTableId,
     } as any;
     let savedId: string | null = initial?.id ?? null;
     if (initial?.id) {
@@ -217,7 +245,7 @@ export function ReservationDrawer({
       savedId = (data as { id: string } | null)?.id ?? null;
     }
     if (savedId) {
-      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+      await syncReservationTables(savedId, selTableIds);
     }
     setSaving(false);
     if (initial) {
@@ -304,10 +332,12 @@ export function ReservationDrawer({
     }
 
     setSaving(true);
+    const { tableId: selTableId, tableIds: selTableIds } = persistFromSelection(tableSelection);
     const payload: any = {
       ...v,
       internal_notes: notes,
       restaurant_id: restaurantId,
+      table_id: selTableId,
     };
     if (opts.status) payload.status = opts.status;
     let savedId: string | null = initial?.id ?? null;
@@ -324,7 +354,7 @@ export function ReservationDrawer({
       savedId = (data as { id: string } | null)?.id ?? null;
     }
     if (savedId) {
-      await syncReservationTables(savedId, payload.table_id ? [payload.table_id] : []);
+      await syncReservationTables(savedId, selTableIds);
     }
     setSaving(false);
     toast.success(opts.successMsg);
