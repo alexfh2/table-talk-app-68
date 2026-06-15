@@ -55,7 +55,7 @@ export function ReservationFormDialog({
         time: payload.reservation_time,
         partySize: Number(payload.party_size),
       });
-      if (res.tableId) {
+      if (!res.needsReview && res.tableId) {
         payload.table_id = res.tableId;
         toast.message(`Mesa asignada automáticamente: ${res.tableLabel}`);
       } else if (res.needsReview) {
