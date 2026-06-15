@@ -102,7 +102,13 @@ export function ReservationDrawer({
   useEffect(() => {
     if (!open) return;
     if (!initial?.id) {
-      setTableSelection({ kind: "none" });
+      // For create mode, honor a preselected table coming through createDefaults.
+      const preTable = createDefaults?.table_id ?? null;
+      if (preTable) {
+        setTableSelection({ kind: "table", tableId: preTable });
+      } else {
+        setTableSelection({ kind: "none" });
+      }
       return;
     }
     let cancelled = false;
@@ -115,7 +121,7 @@ export function ReservationDrawer({
     return () => {
       cancelled = true;
     };
-  }, [open, initial?.id, initial?.table_id]);
+  }, [open, initial?.id, initial?.table_id, createDefaults?.table_id]);
 
   // Load same-day reservations to compute availability
   useEffect(() => {
