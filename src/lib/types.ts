@@ -260,6 +260,12 @@ export interface RestaurantTable {
   is_active: boolean;
   internal_notes: string | null;
   sort_order: number;
+  visual_x: number | null;
+  visual_y: number | null;
+  visual_width: number | null;
+  visual_height: number | null;
+  visual_shape: "round" | "square" | "rectangle";
+  visual_rotation: number;
 }
 
 export interface TableCombination {
