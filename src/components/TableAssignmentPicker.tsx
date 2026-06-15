@@ -11,11 +11,16 @@ import {
   Bell,
   Square as SquareIcon,
   Shapes,
+  Sparkles,
 } from "lucide-react";
 import {
   getAvailableTableOptions,
   type AvailableTableOptions,
 } from "@/lib/getAvailableTableOptions";
+import {
+  computeRecommendation,
+  type RecommendedAssignment,
+} from "@/lib/getRecommendedTableAssignment";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   RestaurantTable,
@@ -60,6 +65,7 @@ export function TableAssignmentPicker({
   onChange,
   /** Used to render and keep the current assignment visible in edit mode. */
   currentAssignmentLabel,
+  preferredZoneId,
 }: {
   restaurantId: string;
   date: string | undefined;
@@ -69,6 +75,7 @@ export function TableAssignmentPicker({
   value: TableSelection;
   onChange: (s: TableSelection) => void;
   currentAssignmentLabel?: string | null;
+  preferredZoneId?: string | null;
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AvailableTableOptions | null>(null);
@@ -110,6 +117,11 @@ export function TableAssignmentPicker({
     return result.combinations.some((c) => c.combination.id === value.combinationId);
   }, [result, value]);
 
+  const recommendation: RecommendedAssignment | null = useMemo(() => {
+    if (!result) return null;
+    return computeRecommendation(result, partySize, preferredZoneId ?? null);
+  }, [result, partySize, preferredZoneId]);
+
   if (!ready) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -122,8 +134,34 @@ export function TableAssignmentPicker({
   const hasOptions =
     !!result && (result.individualTables.length > 0 || result.combinations.length > 0);
 
+  const recommendedKey = recommendationSelectionKey(recommendation);
+  const matchesRecommendation =
+    recommendedKey !== null && recommendedKey === selectedKey;
+
+  const applyRecommendation = () => {
+    if (!recommendation) return;
+    const opt = recommendation.recommendedOption;
+    if (opt.type === "individual_table") {
+      onChange({ kind: "table", tableId: opt.table.id });
+    } else if (opt.type === "table_combination") {
+      onChange({
+        kind: "combo",
+        combinationId: opt.combination.combination.id,
+        tableIds: opt.combination.tables.map((t) => t.id),
+      });
+    }
+  };
+
   return (
     <div className="space-y-3">
+      {recommendation && (
+        <RecommendationCard
+          recommendation={recommendation}
+          matchesSelection={matchesRecommendation}
+          onApply={applyRecommendation}
+        />
+      )}
+
       <div className="flex items-center justify-between gap-2">
         <div className="inline-flex rounded-md border border-border overflow-hidden">
           <button
@@ -276,6 +314,96 @@ function OptionCard({
       <div className="text-sm font-medium text-foreground">{title}</div>
       {subtitle && <div className="text-xs text-muted-foreground mt-0.5">{subtitle}</div>}
     </button>
+  );
+}
+
+function recommendationSelectionKey(
+  rec: RecommendedAssignment | null,
+): string | null {
+  if (!rec) return null;
+  const opt = rec.recommendedOption;
+  if (opt.type === "individual_table") return `t:${opt.table.id}`;
+  if (opt.type === "table_combination")
+    return `c:${opt.combination.combination.id}`;
+  return null;
+}
+
+function RecommendationCard({
+  recommendation,
+  matchesSelection,
+  onApply,
+}: {
+  recommendation: RecommendedAssignment;
+  matchesSelection: boolean;
+  onApply: () => void;
+}) {
+  const opt = recommendation.recommendedOption;
+  const none = opt.type === "none";
+
+  let title = "";
+  let subtitle = "";
+  if (opt.type === "individual_table") {
+    const t = opt.table;
+    title = t.label;
+    subtitle = `${t.min_capacity}–${t.max_capacity} personas`;
+  } else if (opt.type === "table_combination") {
+    const c = opt.combination;
+    const labels = c.tables.map((tt) => tt.label).join(" + ");
+    const zone = c.zone?.name;
+    title = labels;
+    subtitle = [
+      zone,
+      `${c.combination.min_capacity ?? 1}–${c.combination.max_capacity} personas`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            Recomendado
+          </div>
+          {none ? (
+            <p className="mt-1 text-sm text-foreground">
+              No hay una mesa recomendada para esta hora.
+            </p>
+          ) : (
+            <>
+              <div className="mt-0.5 text-sm font-medium text-foreground truncate">
+                {title}
+              </div>
+              {subtitle && (
+                <div className="text-xs text-muted-foreground truncate">
+                  {subtitle}
+                </div>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {recommendation.reason}
+              </p>
+            </>
+          )}
+        </div>
+        {!none && (
+          <button
+            type="button"
+            onClick={onApply}
+            disabled={matchesSelection}
+            className={[
+              "shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+              matchesSelection
+                ? "border-border bg-muted text-muted-foreground cursor-default"
+                : "border-primary/40 bg-background text-primary hover:bg-primary/5",
+            ].join(" ")}
+          >
+            {matchesSelection ? "Aplicada" : "Usar recomendación"}
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 
