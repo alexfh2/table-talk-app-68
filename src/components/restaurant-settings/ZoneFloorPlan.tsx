@@ -8,10 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Save, X, Pencil, RotateCw } from "lucide-react";
+import { Save, X, Pencil, RotateCw, Minus, Plus } from "lucide-react";
 
 type ComboRow = { combination: TableCombination; tableIds: string[] };
 
@@ -29,6 +28,30 @@ const DEFAULT_BY_SHAPE: Record<Draft["visual_shape"], { w: number; h: number }> 
   square: { w: 11, h: 16 },
   rectangle: { w: 18, h: 11 },
 };
+
+/** Size presets per shape (width is the driver; height derived). */
+const SIZE_PRESETS: Record<Draft["visual_shape"], { sm: number; md: number; lg: number }> = {
+  round: { sm: 8, md: 11, lg: 15 },
+  square: { sm: 8, md: 11, lg: 15 },
+  rectangle: { sm: 14, md: 18, lg: 24 },
+};
+
+function heightFor(shape: Draft["visual_shape"], width: number) {
+  if (shape === "rectangle") return Math.max(6, Math.round(width * 0.6));
+  // round/square render inside a slightly taller box so the label fits below
+  return Math.round(width * 1.45);
+}
+
+function sizeLabel(shape: Draft["visual_shape"], width: number): "sm" | "md" | "lg" {
+  const p = SIZE_PRESETS[shape];
+  const distances: Array<["sm" | "md" | "lg", number]> = [
+    ["sm", Math.abs(width - p.sm)],
+    ["md", Math.abs(width - p.md)],
+    ["lg", Math.abs(width - p.lg)],
+  ];
+  distances.sort((a, b) => a[1] - b[1]);
+  return distances[0][0];
+}
 
 /** Pure helper: place tables missing a saved position into a tidy grid. */
 function autoLayout(
@@ -291,71 +314,110 @@ export function ZoneFloorPlan({
       </div>
 
       {editing && selectedDraft && selectedId && (
-        <div className="rounded-xl border border-border bg-background p-3 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Forma y tamaño · {zoneTables.find((t) => t.id === selectedId)?.label}
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs">Forma</label>
-              <Select
-                value={selectedDraft.visual_shape}
-                onValueChange={(v) => {
-                  const shape = v as Draft["visual_shape"];
-                  const def = DEFAULT_BY_SHAPE[shape];
-                  updateDraft(selectedId, {
-                    visual_shape: shape,
-                    visual_width: def.w,
-                    visual_height: def.h,
-                    visual_rotation: shape === "rectangle" ? selectedDraft.visual_rotation : 0,
-                  });
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="round">Redonda</SelectItem>
-                  <SelectItem value="square">Cuadrada</SelectItem>
-                  <SelectItem value="rectangle">Rectangular</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs">Tamaño</label>
-              <Slider
-                min={6}
-                max={30}
-                step={1}
-                value={[selectedDraft.visual_width]}
-                onValueChange={([v]) => {
-                  if (selectedDraft.visual_shape === "rectangle") {
-                    updateDraft(selectedId, {
-                      visual_width: v,
-                      visual_height: Math.max(6, Math.round(v * 0.6)),
-                    });
-                  } else {
-                    updateDraft(selectedId, { visual_width: v, visual_height: v });
-                  }
-                }}
-              />
-            </div>
-            {selectedDraft.visual_shape === "rectangle" && (
-              <div className="space-y-1.5">
-                <label className="text-xs inline-flex items-center gap-1">
-                  <RotateCw className="h-3 w-3" /> Rotación
-                </label>
-                <Slider
-                  min={0}
-                  max={180}
-                  step={5}
-                  value={[selectedDraft.visual_rotation]}
-                  onValueChange={([v]) => updateDraft(selectedId, { visual_rotation: v })}
-                />
+        (() => {
+          const selectedTable = zoneTables.find((t) => t.id === selectedId);
+          const shape = selectedDraft.visual_shape;
+          const currentSize = sizeLabel(shape, selectedDraft.visual_width);
+          const presets = SIZE_PRESETS[shape];
+          const applySize = (key: "sm" | "md" | "lg") => {
+            const w = presets[key];
+            updateDraft(selectedId, { visual_width: w, visual_height: heightFor(shape, w) });
+          };
+          const nudge = (delta: number) => {
+            const w = clamp(selectedDraft.visual_width + delta, 6, 30);
+            updateDraft(selectedId, { visual_width: w, visual_height: heightFor(shape, w) });
+          };
+          const rotateBy = (delta: number) => {
+            const r = ((selectedDraft.visual_rotation + delta) % 360 + 360) % 360;
+            updateDraft(selectedId, { visual_rotation: r });
+          };
+          return (
+            <div className="rounded-xl border border-border bg-background p-4 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Mesa</p>
+                  <p className="text-sm font-semibold">{selectedTable?.label}</p>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedId(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-            )}
-          </div>
-        </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Forma</label>
+                  <Select
+                    value={shape}
+                    onValueChange={(v) => {
+                      const next = v as Draft["visual_shape"];
+                      const w = SIZE_PRESETS[next][sizeLabel(shape, selectedDraft.visual_width)];
+                      updateDraft(selectedId, {
+                        visual_shape: next,
+                        visual_width: w,
+                        visual_height: heightFor(next, w),
+                        visual_rotation: next === "rectangle" ? selectedDraft.visual_rotation : 0,
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="round">Redonda</SelectItem>
+                      <SelectItem value="square">Cuadrada</SelectItem>
+                      <SelectItem value="rectangle">Rectangular</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs text-muted-foreground">Tamaño</label>
+                  <div className="flex items-center gap-1">
+                    <div className="inline-flex rounded-md border border-border overflow-hidden">
+                      {(["sm", "md", "lg"] as const).map((k) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => applySize(k)}
+                          className={[
+                            "px-2.5 py-1.5 text-xs transition-colors",
+                            currentSize === k
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-background hover:bg-muted",
+                          ].join(" ")}
+                        >
+                          {k === "sm" ? "Pequeña" : k === "md" ? "Media" : "Grande"}
+                        </button>
+                      ))}
+                    </div>
+                    <Button size="icon" variant="outline" className="h-8 w-8 ml-1" onClick={() => nudge(-1)} aria-label="Reducir">
+                      <Minus className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => nudge(1)} aria-label="Aumentar">
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+
+                {shape === "rectangle" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                      <RotateCw className="h-3 w-3" /> Girar
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="outline" onClick={() => rotateBy(-15)}>−15°</Button>
+                      <Button size="sm" variant="outline" onClick={() => rotateBy(15)}>+15°</Button>
+                      <Button size="sm" variant="outline" onClick={() => rotateBy(90)}>90°</Button>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {Math.round(selectedDraft.visual_rotation)}°
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()
       )}
     </div>
   );
