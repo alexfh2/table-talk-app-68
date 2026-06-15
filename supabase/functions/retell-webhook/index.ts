@@ -22,6 +22,7 @@ type Action =
   | "check_availability"
   | "update_reservation"
   | "cancel_reservation"
+  | "find_reservation"
   | "get_restaurant_info"
   | "get_restaurant_info_by_phone";
 
@@ -41,14 +42,41 @@ interface Payload {
   date?: string;
   // lookup by phone
   phone?: string;
-  // voice-only: preferred zone name (case-insensitive)
+  // voice-only extras
   preferred_zone?: string;
+  zone?: string;
+  special_requests?: string;
+  time_preference?: string;
 }
 
 function dayOfWeekFromISO(d: string): number {
-  // Avoid TZ surprises: compute UTC day-of-week from YYYY-MM-DD
+  // Avoid TZ surprises: compute UTC day-of-week from YYYY-MM-DD.
+  // Convention: 0 = Sunday … 6 = Saturday (matches restaurant_schedule.day_of_week).
   const [y, m, day] = d.split("-").map(Number);
   return new Date(Date.UTC(y, (m ?? 1) - 1, day ?? 1)).getUTCDay();
+}
+
+function timeToMinutes(t: string): number {
+  const [h, m] = t.slice(0, 5).split(":").map(Number);
+  return (h ?? 0) * 60 + (m ?? 0);
+}
+
+/**
+ * Returns true if `time` (HH:MM) falls within [open, close].
+ * Supports services that end at 00:00 or cross midnight (e.g. 20:00–01:30).
+ */
+function isTimeWithinService(time: string, open: string, close: string): boolean {
+  if (!open || !close) return false;
+  const t = timeToMinutes(time);
+  const o = timeToMinutes(open);
+  let c = timeToMinutes(close);
+  // 00:00 closing means end-of-day (24:00)
+  if (c === 0) c = 24 * 60;
+  if (c >= o) {
+    return t >= o && t <= c;
+  }
+  // crosses midnight: [o..24h] U [0..c]
+  return t >= o || t <= c;
 }
 
 /**
@@ -74,14 +102,22 @@ async function getEffectiveServices(restaurantId: string, date: string) {
   const seasonId = season?.id ?? null;
   const exceptions = excRes.data ?? [];
 
-  let services = schedule
-    .filter((r: any) =>
-      (r.season_id ?? null) === seasonId &&
-      r.is_open && r.opening_time && r.closing_time,
-    )
-    .map((r: any) => ({ ...r }));
+  const openRows = (sid: string | null) =>
+    schedule
+      .filter((r: any) =>
+        (r.season_id ?? null) === sid &&
+        r.is_open && r.opening_time && r.closing_time,
+      )
+      .map((r: any) => ({ ...r }));
 
+  let services = openRows(seasonId);
   let source: "exception" | "season" | "base" = season ? "season" : "base";
+
+  // Fallback: season is active but has no services for this weekday → use base schedule.
+  if (season && services.length === 0) {
+    services = openRows(null);
+    source = "base";
+  }
 
   for (const ex of exceptions as any[]) {
     source = "exception";
@@ -132,11 +168,9 @@ async function validateSlot(restaurantId: string, date: string, time: string) {
     };
   }
   const t = time.slice(0, 5);
-  const inService = services.some((s: any) => {
-    const open = (s.opening_time ?? "").slice(0, 5);
-    const close = (s.closing_time ?? "").slice(0, 5);
-    return open && close && t >= open && t <= close;
-  });
+  const inService = services.some((s: any) =>
+    isTimeWithinService(t, (s.opening_time ?? "").slice(0, 5), (s.closing_time ?? "").slice(0, 5)),
+  );
   if (!inService) {
     return {
       ok: false,
