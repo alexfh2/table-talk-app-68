@@ -34,7 +34,9 @@ export type Database = {
           slot_almost_full_threshold: number
           tone_style: string | null
           updated_at: string
+          voice_no_table_fallback: string
           voice_reservation_policy: string
+          voice_table_autoassign_mode: string
           welcome_message: string | null
         }
         Insert: {
@@ -56,7 +58,9 @@ export type Database = {
           slot_almost_full_threshold?: number
           tone_style?: string | null
           updated_at?: string
+          voice_no_table_fallback?: string
           voice_reservation_policy?: string
+          voice_table_autoassign_mode?: string
           welcome_message?: string | null
         }
         Update: {
@@ -78,7 +82,9 @@ export type Database = {
           slot_almost_full_threshold?: number
           tone_style?: string | null
           updated_at?: string
+          voice_no_table_fallback?: string
           voice_reservation_policy?: string
+          voice_table_autoassign_mode?: string
           welcome_message?: string | null
         }
         Relationships: [
