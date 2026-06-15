@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import type { RestaurantTable, Zone, TableCombination } from "@/lib/types";
-import { Link2, Plus, X, RotateCw, Minus } from "lucide-react";
+import { Link2, Plus, X, RotateCw, Minus, Plus as PlusIcon } from "lucide-react";
 import {
   Select,
   SelectContent,
