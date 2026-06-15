@@ -11,11 +11,16 @@ import {
   Bell,
   Square as SquareIcon,
   Shapes,
+  Sparkles,
 } from "lucide-react";
 import {
   getAvailableTableOptions,
   type AvailableTableOptions,
 } from "@/lib/getAvailableTableOptions";
+import {
+  computeRecommendation,
+  type RecommendedAssignment,
+} from "@/lib/getRecommendedTableAssignment";
 import { supabase } from "@/integrations/supabase/client";
 import type {
   RestaurantTable,
@@ -60,6 +65,7 @@ export function TableAssignmentPicker({
   onChange,
   /** Used to render and keep the current assignment visible in edit mode. */
   currentAssignmentLabel,
+  preferredZoneId,
 }: {
   restaurantId: string;
   date: string | undefined;
@@ -69,6 +75,7 @@ export function TableAssignmentPicker({
   value: TableSelection;
   onChange: (s: TableSelection) => void;
   currentAssignmentLabel?: string | null;
+  preferredZoneId?: string | null;
 }) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AvailableTableOptions | null>(null);
@@ -110,6 +117,11 @@ export function TableAssignmentPicker({
     return result.combinations.some((c) => c.combination.id === value.combinationId);
   }, [result, value]);
 
+  const recommendation: RecommendedAssignment | null = useMemo(() => {
+    if (!result) return null;
+    return computeRecommendation(result, partySize, preferredZoneId ?? null);
+  }, [result, partySize, preferredZoneId]);
+
   if (!ready) {
     return (
       <p className="text-xs text-muted-foreground">
@@ -122,8 +134,34 @@ export function TableAssignmentPicker({
   const hasOptions =
     !!result && (result.individualTables.length > 0 || result.combinations.length > 0);
 
+  const recommendedKey = recommendationSelectionKey(recommendation);
+  const matchesRecommendation =
+    recommendedKey !== null && recommendedKey === selectedKey;
+
+  const applyRecommendation = () => {
+    if (!recommendation) return;
+    const opt = recommendation.recommendedOption;
+    if (opt.type === "individual_table") {
+      onChange({ kind: "table", tableId: opt.table.id });
+    } else if (opt.type === "table_combination") {
+      onChange({
+        kind: "combo",
+        combinationId: opt.combination.combination.id,
+        tableIds: opt.combination.tables.map((t) => t.id),
+      });
+    }
+  };
+
   return (
     <div className="space-y-3">
+      {recommendation && (
+        <RecommendationCard
+          recommendation={recommendation}
+          matchesSelection={matchesRecommendation}
+          onApply={applyRecommendation}
+        />
+      )}
+
       <div className="flex items-center justify-between gap-2">
         <div className="inline-flex rounded-md border border-border overflow-hidden">
           <button
