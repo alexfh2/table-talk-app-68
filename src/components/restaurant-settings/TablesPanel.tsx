@@ -12,6 +12,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { TableCombinationsPanel } from "./TableCombinationsPanel";
 
 const DEMO_ZONES = [
   { name: "Interior", count: 8, min: 2, max: 6, prefix: "I" },
@@ -212,6 +213,10 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
         <div className="flex justify-end">
           <Button onClick={saveAll} disabled={saving}>{saving ? "Guardando…" : "Guardar cambios"}</Button>
         </div>
+      )}
+
+      {zones.length > 0 && (
+        <TableCombinationsPanel restaurantId={restaurantId} zones={zones} tables={tables} />
       )}
     </div>
   );
