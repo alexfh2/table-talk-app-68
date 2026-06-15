@@ -36,6 +36,16 @@ import { ZoneElementDetailDrawer } from "./ZoneElementDetailDrawer";
 
 type ComboRow = { combination: TableCombination; tableIds: string[] };
 
+const ELEMENT_ICONS: Record<ZoneElementType, React.ComponentType<{ className?: string }>> = {
+  bar: Wine,
+  door: DoorOpen,
+  kitchen: ChefHat,
+  bathroom: Bath,
+  reception: Bell,
+  column: SquareIcon,
+  custom: Shapes,
+};
+
 type Draft = {
   visual_x: number;
   visual_y: number;
