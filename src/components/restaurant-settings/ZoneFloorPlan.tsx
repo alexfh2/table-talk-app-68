@@ -8,10 +8,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Save, X, Pencil, RotateCw } from "lucide-react";
+import { Save, X, Pencil, RotateCw, Minus, Plus } from "lucide-react";
 
 type ComboRow = { combination: TableCombination; tableIds: string[] };
 
@@ -29,6 +28,30 @@ const DEFAULT_BY_SHAPE: Record<Draft["visual_shape"], { w: number; h: number }> 
   square: { w: 11, h: 16 },
   rectangle: { w: 18, h: 11 },
 };
+
+/** Size presets per shape (width is the driver; height derived). */
+const SIZE_PRESETS: Record<Draft["visual_shape"], { sm: number; md: number; lg: number }> = {
+  round: { sm: 8, md: 11, lg: 15 },
+  square: { sm: 8, md: 11, lg: 15 },
+  rectangle: { sm: 14, md: 18, lg: 24 },
+};
+
+function heightFor(shape: Draft["visual_shape"], width: number) {
+  if (shape === "rectangle") return Math.max(6, Math.round(width * 0.6));
+  // round/square render inside a slightly taller box so the label fits below
+  return Math.round(width * 1.45);
+}
+
+function sizeLabel(shape: Draft["visual_shape"], width: number): "sm" | "md" | "lg" {
+  const p = SIZE_PRESETS[shape];
+  const distances: Array<["sm" | "md" | "lg", number]> = [
+    ["sm", Math.abs(width - p.sm)],
+    ["md", Math.abs(width - p.md)],
+    ["lg", Math.abs(width - p.lg)],
+  ];
+  distances.sort((a, b) => a[1] - b[1]);
+  return distances[0][0];
+}
 
 /** Pure helper: place tables missing a saved position into a tidy grid. */
 function autoLayout(
