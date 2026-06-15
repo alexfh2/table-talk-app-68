@@ -125,6 +125,9 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
     const { error } = await supabase.from("restaurant_tables").update({
       label: t.label, min_capacity: t.min_capacity, max_capacity: t.max_capacity,
       is_active: t.is_active, internal_notes: t.internal_notes,
+      visual_x: t.visual_x, visual_y: t.visual_y,
+      visual_width: t.visual_width, visual_height: t.visual_height,
+      visual_shape: t.visual_shape, visual_rotation: t.visual_rotation,
     }).eq("id", t.id);
     if (error) toast.error(error.message);
   }
