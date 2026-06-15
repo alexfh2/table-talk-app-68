@@ -1,0 +1,2 @@
+ALTER TABLE public.reservations ADD COLUMN IF NOT EXISTS preferred_zone_id uuid REFERENCES public.restaurant_zones(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_reservations_preferred_zone ON public.reservations(preferred_zone_id);
