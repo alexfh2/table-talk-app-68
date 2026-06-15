@@ -317,6 +317,96 @@ function OptionCard({
   );
 }
 
+function recommendationSelectionKey(
+  rec: RecommendedAssignment | null,
+): string | null {
+  if (!rec) return null;
+  const opt = rec.recommendedOption;
+  if (opt.type === "individual_table") return `t:${opt.table.id}`;
+  if (opt.type === "table_combination")
+    return `c:${opt.combination.combination.id}`;
+  return null;
+}
+
+function RecommendationCard({
+  recommendation,
+  matchesSelection,
+  onApply,
+}: {
+  recommendation: RecommendedAssignment;
+  matchesSelection: boolean;
+  onApply: () => void;
+}) {
+  const opt = recommendation.recommendedOption;
+  const none = opt.type === "none";
+
+  let title = "";
+  let subtitle = "";
+  if (opt.type === "individual_table") {
+    const t = opt.table;
+    title = t.label;
+    subtitle = `${t.min_capacity}–${t.max_capacity} personas`;
+  } else if (opt.type === "table_combination") {
+    const c = opt.combination;
+    const labels = c.tables.map((tt) => tt.label).join(" + ");
+    const zone = c.zone?.name;
+    title = labels;
+    subtitle = [
+      zone,
+      `${c.combination.min_capacity ?? 1}–${c.combination.max_capacity} personas`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-secondary/40 px-3 py-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            Recomendado
+          </div>
+          {none ? (
+            <p className="mt-1 text-sm text-foreground">
+              No hay una mesa recomendada para esta hora.
+            </p>
+          ) : (
+            <>
+              <div className="mt-0.5 text-sm font-medium text-foreground truncate">
+                {title}
+              </div>
+              {subtitle && (
+                <div className="text-xs text-muted-foreground truncate">
+                  {subtitle}
+                </div>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {recommendation.reason}
+              </p>
+            </>
+          )}
+        </div>
+        {!none && (
+          <button
+            type="button"
+            onClick={onApply}
+            disabled={matchesSelection}
+            className={[
+              "shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+              matchesSelection
+                ? "border-border bg-muted text-muted-foreground cursor-default"
+                : "border-primary/40 bg-background text-primary hover:bg-primary/5",
+            ].join(" ")}
+          >
+            {matchesSelection ? "Aplicada" : "Usar recomendación"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Build the initial selection from existing reservation data. */
 export function selectionFromExisting(opts: {
   tableIds: string[]; // from reservation_tables, primary
