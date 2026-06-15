@@ -142,68 +142,77 @@ export async function seedQATableData(restaurantId: string): Promise<QASeedResul
     combinationIds.push(comboId);
   }
 
-  // 4. Reservations — clean prior QA reservations for this restaurant, then re-create.
+  // 4. Reservations — upsert QA reservations in place and re-sync
+  // reservation_tables. Existing QA rows (matched by name + restaurant)
+  // are updated, never deleted, so we never lose their ids.
   const date = tomorrowISO();
-  const { data: existingRes } = await supabase
+
+  const resSpecs: Array<{
+    name: string;
+    time: string;
+    party: number;
+    primary: string;
+    tables: string[];
+  }> = [
+    { name: "QA Ana Compacta", time: "21:00:00", party: 2, primary: "QA1", tables: ["QA1"] },
+    { name: "QA Grupo Grande", time: "21:30:00", party: 8, primary: "QA5", tables: ["QA5", "QA6"] },
+  ];
+
+  const { data: existingRes, error: resErr } = await supabase
     .from("reservations")
     .select("id, customer_name")
     .eq("restaurant_id", restaurantId)
-    .like("customer_name", "QA %");
-  if (existingRes && existingRes.length > 0) {
-    await supabase.from("reservations").delete().in("id", existingRes.map((r) => r.id));
-  }
+    .in("customer_name", resSpecs.map((s) => s.name));
+  if (resErr) throw resErr;
 
   const reservationIds: string[] = [];
+  for (const spec of resSpecs) {
+    const primaryId = tableIds[spec.primary];
+    if (!primaryId) throw new Error(`QA seed: missing table ${spec.primary}`);
+    const payload = {
+      restaurant_id: restaurantId,
+      customer_name: spec.name,
+      reservation_date: date,
+      reservation_time: spec.time,
+      party_size: spec.party,
+      status: "confirmed" as const,
+      channel: "manual" as const,
+      table_id: primaryId,
+      internal_notes: QA_NOTE,
+    };
+    const existing = (existingRes ?? []).find((r) => r.customer_name === spec.name);
+    let resId: string;
+    if (existing) {
+      const { error } = await supabase
+        .from("reservations")
+        .update(payload)
+        .eq("id", existing.id);
+      if (error) throw error;
+      resId = existing.id;
+    } else {
+      const { data, error } = await supabase
+        .from("reservations")
+        .insert(payload)
+        .select()
+        .single();
+      if (error) throw error;
+      resId = data.id;
+    }
+    reservationIds.push(resId);
 
-  // QA Ana Compacta — 2 personas, 21:00, mesa QA1
-  {
-    const { data, error } = await supabase
-      .from("reservations")
-      .insert({
-        restaurant_id: restaurantId,
-        customer_name: "QA Ana Compacta",
-        reservation_date: date,
-        reservation_time: "21:00:00",
-        party_size: 2,
-        status: "confirmed",
-        channel: "manual",
-        table_id: tableIds["QA1"],
-        internal_notes: QA_NOTE,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    reservationIds.push(data.id);
-    const { error: rtErr } = await supabase
+    // Always re-sync reservation_tables to match the spec exactly.
+    const { error: delErr } = await supabase
       .from("reservation_tables")
-      .insert({ reservation_id: data.id, table_id: tableIds["QA1"] });
-    if (rtErr) throw rtErr;
-  }
-
-  // QA Grupo Grande — 8 personas, 21:30, mesas QA5 + QA6
-  {
-    const { data, error } = await supabase
-      .from("reservations")
-      .insert({
-        restaurant_id: restaurantId,
-        customer_name: "QA Grupo Grande",
-        reservation_date: date,
-        reservation_time: "21:30:00",
-        party_size: 8,
-        status: "confirmed",
-        channel: "manual",
-        table_id: tableIds["QA5"],
-        internal_notes: QA_NOTE,
-      })
-      .select()
-      .single();
-    if (error) throw error;
-    reservationIds.push(data.id);
-    const { error: rtErr } = await supabase.from("reservation_tables").insert([
-      { reservation_id: data.id, table_id: tableIds["QA5"] },
-      { reservation_id: data.id, table_id: tableIds["QA6"] },
-    ]);
-    if (rtErr) throw rtErr;
+      .delete()
+      .eq("reservation_id", resId);
+    if (delErr) throw delErr;
+    const rtRows = spec.tables.map((label) => {
+      const tid = tableIds[label];
+      if (!tid) throw new Error(`QA seed: missing table ${label}`);
+      return { reservation_id: resId, table_id: tid };
+    });
+    const { error: insErr } = await supabase.from("reservation_tables").insert(rtRows);
+    if (insErr) throw insErr;
   }
 
   return { zoneId, tableIds, combinationIds, reservationIds, date };
