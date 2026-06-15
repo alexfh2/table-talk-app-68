@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { Reservation, ReservationStatus, ReservationChannel, Zone, RestaurantTable } from "@/lib/types";
 import { RESERVATION_STATUS_LABELS, CHANNEL_LABELS } from "@/lib/types";
 import { toast } from "sonner";
+import { autoAssignTable } from "@/lib/autoAssignTable";
 
 export function ReservationFormDialog({
   open, onOpenChange, restaurantId, initial, onSaved,
@@ -44,7 +45,29 @@ export function ReservationFormDialog({
 
   async function save() {
     setSaving(true);
-    const payload = { ...v, restaurant_id: restaurantId } as any;
+    const payload: any = { ...v, restaurant_id: restaurantId };
+
+    // If user did not pick a table, try to auto-assign the smallest table that fits.
+    if (!initial?.id && !payload.table_id && payload.reservation_date && payload.reservation_time && payload.party_size) {
+      const res = await autoAssignTable({
+        restaurantId,
+        date: payload.reservation_date,
+        time: payload.reservation_time,
+        partySize: Number(payload.party_size),
+      });
+      if (res.tableId) {
+        payload.table_id = res.tableId;
+        toast.message(`Mesa asignada automáticamente: ${res.tableLabel}`);
+      } else if (res.needsReview) {
+        payload.status = "requires_human";
+        payload.internal_notes = [payload.internal_notes, "⚠ Sin mesa única que encaje. Requiere reasignación manual."].filter(Boolean).join("\n");
+        toast.warning("No hay una mesa única que encaje. Reserva marcada para revisión humana.");
+      } else {
+        setSaving(false);
+        return toast.error("No hay capacidad disponible para esa hora.");
+      }
+    }
+
     const res = initial?.id
       ? await supabase.from("reservations").update(payload).eq("id", initial.id)
       : await supabase.from("reservations").insert(payload);
