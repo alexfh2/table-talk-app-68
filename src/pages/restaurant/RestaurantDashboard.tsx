@@ -403,6 +403,10 @@ export default function RestaurantDashboard() {
             <Button size="sm" variant="outline" className="rounded-full" onClick={() => markSeated(r)}>
               <Check className="h-3.5 w-3.5 mr-1.5" /> Marcar sentado
             </Button>
+          ) : !seated && canAssignTable(r) ? (
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => openEdit(r)}>
+              Asignar mesa
+            </Button>
           ) : null}
           <Button size="sm" variant="ghost" className="rounded-full" onClick={() => openEdit(r)}>
             <Pencil className="h-3.5 w-3.5 mr-1" /> Editar
