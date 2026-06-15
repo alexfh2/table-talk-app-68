@@ -420,6 +420,7 @@ export function TodayMapView({
                   highlightedReservation={highlightedReservation}
                   setHighlightedReservation={setHighlightedReservation}
                   selectedTime={selectedTime}
+                  reservations={reservations}
                   onAvailableClick={(tableId) => {
                     if (selectedTime) onCreate(selectedTime, tableId);
                   }}
@@ -458,6 +459,7 @@ function ZoneCanvas({
   highlightedReservation,
   setHighlightedReservation,
   selectedTime,
+  reservations,
   onAvailableClick,
   onOccupiedClick,
   loading,
@@ -472,6 +474,7 @@ function ZoneCanvas({
   highlightedReservation: string | null;
   setHighlightedReservation: (id: string | null) => void;
   selectedTime: string | null;
+  reservations: Reservation[];
   onAvailableClick: (tableId: string) => void;
   onOccupiedClick: (reservationId: string) => void;
   loading: boolean;
@@ -672,10 +675,10 @@ function ZoneCanvas({
             .map((id) => tableById.get(id)?.label ?? "")
             .filter(Boolean)
             .join(" + ");
-          const channelLabel =
-            CHANNEL_LABEL_SHORT[
-              (occ.occupiedBySummary as any).channel ?? "manual"
-            ] ?? "—";
+          const fullRes = reservations.find((r) => r.id === s.reservationId);
+          const channelLabel = fullRes
+            ? CHANNEL_LABEL_SHORT[fullRes.channel] ?? fullRes.channel
+            : "—";
           return (
             <HoverCard key={t.id} openDelay={120} closeDelay={60}>
               <HoverCardTrigger asChild>{button}</HoverCardTrigger>
