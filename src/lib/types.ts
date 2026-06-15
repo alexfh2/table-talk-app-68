@@ -51,6 +51,7 @@ export interface Reservation {
   customer_notes: string | null;
   internal_notes: string | null;
   table_id: string | null;
+  preferred_zone_id: string | null;
   created_at: string;
   updated_at: string;
 }
