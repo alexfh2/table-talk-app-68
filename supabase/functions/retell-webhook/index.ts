@@ -411,6 +411,7 @@ async function checkAvailability(p: Payload) {
         time: p.reservation_time,
         partySize: p.party_size,
         preferredZone: p.preferred_zone ?? p.zone,
+        excludeReservationId: p.exclude_reservation_id,
       });
 
       if (assignment.reason === "no_capacity") {
