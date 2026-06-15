@@ -285,17 +285,24 @@ export default function RestaurantDashboard() {
   }
 
   function canSeat(r: Reservation) {
-    if (r.status === "requires_human" || r.status === "cancelled" || r.status === "no_show") return false;
+    if (r.status !== "confirmed" && r.status !== "modified") return false;
     if (!isViewingToday) return false;
-    const isToday = r.reservation_date === todayISO;
-    if (!isToday) return false;
+    if (r.reservation_date !== todayISO) return false;
+    const ids = effectiveTableIds(r.id, r.table_id, tableMap);
+    if (ids.length === 0) return false;
     const [h, m] = r.reservation_time.split(":").map(Number);
     const resMins = h * 60 + m;
     const nowMins = now.getHours() * 60 + now.getMinutes();
-    // within service: lunch 12:00–17:00 / dinner 17:00–02:00
-    const inLunch = nowMins >= 12 * 60 && nowMins < 17 * 60 && inService(r.reservation_time, "lunch");
-    const inDinner = (nowMins >= 17 * 60 || nowMins < 6 * 60) && inService(r.reservation_time, "dinner");
-    return resMins - nowMins <= 30 || inLunch || inDinner;
+    const diff = nowMins - resMins;
+    return diff >= -90 && diff <= 120;
+  }
+
+  function canAssignTable(r: Reservation) {
+    if (r.status !== "confirmed" && r.status !== "modified") return false;
+    if (!isViewingToday) return false;
+    if (r.reservation_date !== todayISO) return false;
+    const ids = effectiveTableIds(r.id, r.table_id, tableMap);
+    return ids.length === 0;
   }
 
   async function confirmAndCancel(r: Reservation) {
@@ -395,6 +402,10 @@ export default function RestaurantDashboard() {
           ) : !seated && canSeat(r) ? (
             <Button size="sm" variant="outline" className="rounded-full" onClick={() => markSeated(r)}>
               <Check className="h-3.5 w-3.5 mr-1.5" /> Marcar sentado
+            </Button>
+          ) : !seated && canAssignTable(r) ? (
+            <Button size="sm" variant="outline" className="rounded-full" onClick={() => openEdit(r)}>
+              Asignar mesa
             </Button>
           ) : null}
           <Button size="sm" variant="ghost" className="rounded-full" onClick={() => openEdit(r)}>
