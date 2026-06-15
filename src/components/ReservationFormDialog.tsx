@@ -137,30 +137,28 @@ export function ReservationFormDialog({
             </Select>
           </div>
           <div className="col-span-2 space-y-1.5"><Label>Notas del cliente</Label><Textarea rows={2} value={v.customer_notes ?? ""} onChange={(e) => setV({ ...v, customer_notes: e.target.value })} /></div>
-          <div className="col-span-2 space-y-1.5"><Label>Mesa</Label>
-            <Select value={v.table_id ?? "none"} onValueChange={(x) => setV({ ...v, table_id: x === "none" ? null : x })}>
-              <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sin asignar</SelectItem>
-                {zones.map(z => {
-                  const zt = tables.filter(t => t.zone_id === z.id && t.is_active);
-                  if (zt.length === 0) return null;
-                  return (
-                    <div key={z.id}>
-                      <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">{z.name}</div>
-                      {zt.map(t => {
-                        const over = (v.party_size ?? 0) > t.max_capacity;
-                        return (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.label} · {t.min_capacity}-{t.max_capacity} pax{over ? " ⚠ excede capacidad" : ""}
-                          </SelectItem>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+          <div className="col-span-2 space-y-1.5">
+            <Label>Asignación de mesa</Label>
+            <TableAssignmentPicker
+              restaurantId={restaurantId}
+              date={v.reservation_date}
+              time={(v.reservation_time ?? "").slice(0, 5)}
+              partySize={Number(v.party_size ?? 0)}
+              excludeReservationId={initial?.id}
+              value={tableSelection}
+              onChange={setTableSelection}
+              currentAssignmentLabel={(() => {
+                if (tableSelection.kind === "table") {
+                  return tables.find((t) => t.id === tableSelection.tableId)?.label ?? null;
+                }
+                if (tableSelection.kind === "combo") {
+                  return tableSelection.tableIds
+                    .map((id) => tables.find((t) => t.id === id)?.label)
+                    .filter(Boolean).join(" + ") || null;
+                }
+                return null;
+              })()}
+            />
           </div>
           <div className="col-span-2 space-y-1.5"><Label>Notas internas</Label><Textarea rows={2} value={v.internal_notes ?? ""} onChange={(e) => setV({ ...v, internal_notes: e.target.value })} /></div>
         </div>
