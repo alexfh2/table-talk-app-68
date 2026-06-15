@@ -156,6 +156,29 @@ async function createReservation(p: Payload) {
   }
   const v = await validateSlot(p.restaurant_id, p.reservation_date, p.reservation_time);
   if (!v.ok) return json(v, 409);
+
+  // Auto-assign the smallest table that fits the party.
+  const assignment = await autoAssignTable({
+    restaurantId: p.restaurant_id,
+    date: p.reservation_date,
+    time: p.reservation_time,
+    partySize: p.party_size,
+  });
+
+  if (assignment.reason === "no_capacity") {
+    return json({
+      ok: false,
+      error: "no_capacity",
+      message: "No hay capacidad disponible para esa hora.",
+      free_seats: assignment.freeSeats,
+    }, 409);
+  }
+
+  const status = assignment.needsReview ? "requires_human" : "confirmed";
+  const internalNotes = assignment.needsReview
+    ? "⚠ Sin mesa única que encaje. Requiere reasignación manual."
+    : null;
+
   const { data, error } = await supabase
     .from("reservations")
     .insert({
@@ -166,13 +189,38 @@ async function createReservation(p: Payload) {
       reservation_time: p.reservation_time,
       party_size: p.party_size,
       customer_notes: p.customer_notes ?? null,
-      status: "confirmed",
+      internal_notes: internalNotes,
+      table_id: assignment.tableId,
+      status,
       channel: "future_voice",
     })
     .select()
     .single();
   if (error) return json({ ok: false, error: error.message }, 400);
-  return json({ ok: true, reservation: data });
+
+  // Create a handoff request when the reservation needs human review.
+  if (assignment.needsReview && data) {
+    await supabase.from("human_handoff_requests").insert({
+      restaurant_id: p.restaurant_id,
+      reservation_id: data.id,
+      customer_name: p.customer_name,
+      customer_phone: p.customer_phone ?? null,
+      source_channel: "future_voice",
+      reason: "table_auto_assignment_failed",
+      customer_message: `Reserva para ${p.party_size} personas el ${p.reservation_date} a las ${p.reservation_time}. No hay una mesa única que encaje; reasignar manualmente.`,
+      status: "pending",
+    });
+  }
+
+  return json({
+    ok: true,
+    reservation: data,
+    assignment: {
+      table_id: assignment.tableId,
+      needs_review: assignment.needsReview,
+      ...(("tableLabel" in assignment) ? { table_label: assignment.tableLabel } : {}),
+    },
+  });
 }
 
 async function checkAvailability(p: Payload) {
