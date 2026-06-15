@@ -261,3 +261,23 @@ export interface RestaurantTable {
   internal_notes: string | null;
   sort_order: number;
 }
+
+export interface TableCombination {
+  id: string;
+  restaurant_id: string;
+  zone_id: string | null;
+  name: string;
+  min_capacity: number | null;
+  max_capacity: number;
+  is_active: boolean;
+  internal_notes: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface TableCombinationTable {
+  id: string;
+  combination_id: string;
+  table_id: string;
+  sort_order: number;
+}
