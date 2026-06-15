@@ -41,6 +41,7 @@ interface VoiceReservationPayload {
   partySize?: number;
   notes?: string | null;
   preferredZoneId?: string | null;
+  preferredZoneName?: string | null;
   transcript?: string | null;
   callId?: string | null;
 }
@@ -70,6 +71,7 @@ interface VoiceReservationResponse {
   messageForAgent: string;
   reviewReasons: string[];
   blockingReason?: string;
+  idempotent?: boolean;
 }
 
 // ---------------------------------------------------------------------------
