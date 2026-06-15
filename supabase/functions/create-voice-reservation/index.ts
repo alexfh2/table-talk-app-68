@@ -998,6 +998,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     const result = await handle(payload);
+    if (result.status === "blocked" || (!result.success && !result.reservationId)) {
+      console.log("[create-voice-reservation] blocked", {
+        callId: payload.callId ?? null,
+        status: result.status,
+        blockingReason: result.blockingReason ?? null,
+        reviewReasons: result.reviewReasons,
+      });
+    }
     return json(result, result.success ? 200 : 200);
   } catch (err) {
     return json(
