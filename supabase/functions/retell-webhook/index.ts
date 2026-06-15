@@ -208,6 +208,7 @@ async function autoAssignTable(opts: {
   partySize: number;
   slotMinutes?: number;
   preferredZone?: string;
+  excludeReservationId?: string;
 }): Promise<AutoAssign> {
   const time = opts.time.slice(0, 5);
   const window = opts.slotMinutes ?? DEFAULT_SLOT_MIN;
@@ -234,6 +235,7 @@ async function autoAssignTable(opts: {
   const occupied = new Set<string>();
   for (const r of reservations ?? []) {
     if (!r.table_id) continue;
+    if (opts.excludeReservationId && r.id === opts.excludeReservationId) continue;
     if (minutesBetween(time, String(r.reservation_time)) < window) occupied.add(r.table_id);
   }
 
