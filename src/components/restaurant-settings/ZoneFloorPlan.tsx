@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { RestaurantTable, Zone, TableCombination } from "@/lib/types";
+import type {
+  RestaurantTable,
+  Zone,
+  TableCombination,
+  ZoneElement,
+  ZoneElementType,
+} from "@/lib/types";
+import { ZONE_ELEMENT_LABELS } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -10,9 +17,34 @@ import {
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Save, X, Pencil, RotateCw, Minus, Plus } from "lucide-react";
+import {
+  Save,
+  X,
+  Pencil,
+  RotateCw,
+  Minus,
+  Plus,
+  Wine,
+  DoorOpen,
+  ChefHat,
+  Bath,
+  Bell,
+  Square as SquareIcon,
+  Shapes,
+} from "lucide-react";
+import { ZoneElementDetailDrawer } from "./ZoneElementDetailDrawer";
 
 type ComboRow = { combination: TableCombination; tableIds: string[] };
+
+const ELEMENT_ICONS: Record<ZoneElementType, React.ComponentType<{ className?: string }>> = {
+  bar: Wine,
+  door: DoorOpen,
+  kitchen: ChefHat,
+  bathroom: Bath,
+  reception: Bell,
+  column: SquareIcon,
+  custom: Shapes,
+};
 
 type Draft = {
   visual_x: number;
@@ -127,6 +159,104 @@ export function ZoneFloorPlan({
   const [saving, setSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // ---- Floor-plan decorative elements (non-reservable) ----
+  const [elements, setElements] = useState<ZoneElement[]>([]);
+  const [elementDrawerId, setElementDrawerId] = useState<string | null>(null);
+
+  async function reloadElements() {
+    const { data, error } = await supabase
+      .from("restaurant_zone_elements")
+      .select("*")
+      .eq("zone_id", zone.id)
+      .order("sort_order", { ascending: true });
+    if (error) return;
+    setElements((data as unknown as ZoneElement[]) ?? []);
+  }
+
+  useEffect(() => {
+    reloadElements();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zone.id]);
+
+  async function addElement() {
+    const { data, error } = await supabase
+      .from("restaurant_zone_elements")
+      .insert({
+        restaurant_id: zone.restaurant_id,
+        zone_id: zone.id,
+        element_type: "custom",
+        label: "",
+        visual_x: 50,
+        visual_y: 50,
+        visual_width: 18,
+        visual_height: 8,
+        shape: "rectangle",
+        rotation: 0,
+        sort_order: elements.length,
+      })
+      .select()
+      .single();
+    if (error) return toast.error(error.message);
+    const el = data as unknown as ZoneElement;
+    setElements((p) => [...p, el]);
+    setElementDrawerId(el.id);
+  }
+
+  async function updateElement(id: string, patch: Partial<ZoneElement>) {
+    setElements((p) => p.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+    const { error } = await supabase
+      .from("restaurant_zone_elements")
+      .update(patch as any)
+      .eq("id", id);
+    if (error) toast.error(error.message);
+  }
+
+  async function deleteElement(id: string) {
+    setElements((p) => p.filter((e) => e.id !== id));
+    await supabase.from("restaurant_zone_elements").delete().eq("id", id);
+  }
+
+  function startDragElement(e: React.PointerEvent, id: string) {
+    if (!editing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const target = e.currentTarget as HTMLElement;
+    target.setPointerCapture(e.pointerId);
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    let lastX = 0;
+    let lastY = 0;
+    let moved = false;
+    const onMove = (ev: PointerEvent) => {
+      lastX = clamp(((ev.clientX - rect.left) / rect.width) * 100, 3, 97);
+      lastY = clamp(((ev.clientY - rect.top) / rect.height) * 100, 5, 95);
+      moved = true;
+      setElements((p) =>
+        p.map((el) =>
+          el.id === id ? { ...el, visual_x: lastX, visual_y: lastY } : el,
+        ),
+      );
+    };
+    const onUp = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      if (moved) {
+        supabase
+          .from("restaurant_zone_elements")
+          .update({ visual_x: lastX, visual_y: lastY })
+          .eq("id", id)
+          .then(({ error }) => error && toast.error(error.message));
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
+
+  const activeElement = elementDrawerId
+    ? elements.find((e) => e.id === elementDrawerId) ?? null
+    : null;
+
   // Reset drafts when zone tables change or when leaving edit mode
   useEffect(() => {
     setDrafts(autoLayout(zoneTables));
@@ -217,6 +347,9 @@ export function ZoneFloorPlan({
             : "Haz click en una mesa para ver su detalle."}
         </p>
         <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={addElement}>
+            <Plus className="h-4 w-4 mr-1" /> Añadir elemento
+          </Button>
           {editing ? (
             <>
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)} disabled={saving}>
@@ -250,6 +383,47 @@ export function ZoneFloorPlan({
             <p className="text-xs text-muted-foreground italic">Esta zona aún no tiene mesas.</p>
           </div>
         )}
+
+        {/* Decorative elements (rendered behind tables) */}
+        {elements.filter((el) => el.is_visible).map((el) => {
+          const radius =
+            el.shape === "circle" ? "9999px" : el.shape === "square" ? "6px" : "4px";
+          const Icon = ELEMENT_ICONS[el.element_type];
+          return (
+            <button
+              key={el.id}
+              type="button"
+              onPointerDown={(e) => editing && startDragElement(e, el.id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setElementDrawerId(el.id);
+              }}
+              className={[
+                "absolute flex items-center justify-center gap-1.5 select-none",
+                "border border-dashed border-muted-foreground/40 bg-muted/40 text-muted-foreground",
+                "hover:border-muted-foreground/70 hover:text-foreground transition-colors",
+                editing ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+              ].join(" ")}
+              style={{
+                left: `${el.visual_x}%`,
+                top: `${el.visual_y}%`,
+                width: `${el.visual_width}%`,
+                height: `${el.visual_height}%`,
+                minWidth: 32,
+                minHeight: 24,
+                borderRadius: radius,
+                transform: `translate(-50%, -50%) rotate(${el.rotation}deg)`,
+                zIndex: 0,
+              }}
+              aria-label={el.label || ZONE_ELEMENT_LABELS[el.element_type]}
+            >
+              <Icon className="h-3 w-3 shrink-0" />
+              <span className="text-[10px] font-medium uppercase tracking-wide truncate px-1">
+                {el.label || ZONE_ELEMENT_LABELS[el.element_type]}
+              </span>
+            </button>
+          );
+        })}
 
         {zoneTables.map((t) => {
           const d = drafts[t.id];
@@ -419,6 +593,14 @@ export function ZoneFloorPlan({
           );
         })()
       )}
+
+      <ZoneElementDetailDrawer
+        open={!!elementDrawerId}
+        onOpenChange={(b) => !b && setElementDrawerId(null)}
+        element={activeElement}
+        onUpdate={updateElement}
+        onDelete={deleteElement}
+      />
     </div>
   );
 }

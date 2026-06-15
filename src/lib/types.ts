@@ -287,3 +287,41 @@ export interface TableCombinationTable {
   table_id: string;
   sort_order: number;
 }
+
+export type ZoneElementType =
+  | "bar"
+  | "door"
+  | "kitchen"
+  | "bathroom"
+  | "reception"
+  | "column"
+  | "custom";
+
+export type ZoneElementShape = "rectangle" | "square" | "circle";
+
+export const ZONE_ELEMENT_LABELS: Record<ZoneElementType, string> = {
+  bar: "Barra",
+  door: "Puerta",
+  kitchen: "Cocina",
+  bathroom: "Baños",
+  reception: "Recepción",
+  column: "Columna",
+  custom: "Personalizado",
+};
+
+export interface ZoneElement {
+  id: string;
+  restaurant_id: string;
+  zone_id: string;
+  element_type: ZoneElementType;
+  label: string;
+  visual_x: number;
+  visual_y: number;
+  visual_width: number;
+  visual_height: number;
+  shape: ZoneElementShape;
+  rotation: number;
+  is_active: boolean;
+  is_visible: boolean;
+  sort_order: number;
+}

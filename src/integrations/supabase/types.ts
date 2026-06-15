@@ -628,6 +628,78 @@ export type Database = {
         }
         Relationships: []
       }
+      restaurant_zone_elements: {
+        Row: {
+          created_at: string
+          element_type: Database["public"]["Enums"]["zone_element_type"]
+          id: string
+          is_active: boolean
+          is_visible: boolean
+          label: string
+          restaurant_id: string
+          rotation: number
+          shape: Database["public"]["Enums"]["zone_element_shape"]
+          sort_order: number
+          updated_at: string
+          visual_height: number
+          visual_width: number
+          visual_x: number
+          visual_y: number
+          zone_id: string
+        }
+        Insert: {
+          created_at?: string
+          element_type?: Database["public"]["Enums"]["zone_element_type"]
+          id?: string
+          is_active?: boolean
+          is_visible?: boolean
+          label?: string
+          restaurant_id: string
+          rotation?: number
+          shape?: Database["public"]["Enums"]["zone_element_shape"]
+          sort_order?: number
+          updated_at?: string
+          visual_height?: number
+          visual_width?: number
+          visual_x?: number
+          visual_y?: number
+          zone_id: string
+        }
+        Update: {
+          created_at?: string
+          element_type?: Database["public"]["Enums"]["zone_element_type"]
+          id?: string
+          is_active?: boolean
+          is_visible?: boolean
+          label?: string
+          restaurant_id?: string
+          rotation?: number
+          shape?: Database["public"]["Enums"]["zone_element_shape"]
+          sort_order?: number
+          updated_at?: string
+          visual_height?: number
+          visual_width?: number
+          visual_x?: number
+          visual_y?: number
+          zone_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_zone_elements_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_zone_elements_zone_id_fkey"
+            columns: ["zone_id"]
+            isOneToOne: false
+            referencedRelation: "restaurant_zones"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_zones: {
         Row: {
           created_at: string
@@ -871,6 +943,15 @@ export type Database = {
       restaurant_status: "draft" | "active" | "paused"
       summary_frequency: "every_12_hours" | "daily"
       user_role: "platform_admin" | "restaurant_admin"
+      zone_element_shape: "rectangle" | "square" | "circle"
+      zone_element_type:
+        | "bar"
+        | "door"
+        | "kitchen"
+        | "bathroom"
+        | "reception"
+        | "column"
+        | "custom"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1018,6 +1099,16 @@ export const Constants = {
       restaurant_status: ["draft", "active", "paused"],
       summary_frequency: ["every_12_hours", "daily"],
       user_role: ["platform_admin", "restaurant_admin"],
+      zone_element_shape: ["rectangle", "square", "circle"],
+      zone_element_type: [
+        "bar",
+        "door",
+        "kitchen",
+        "bathroom",
+        "reception",
+        "column",
+        "custom",
+      ],
     },
   },
 } as const
