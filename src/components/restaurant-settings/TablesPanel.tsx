@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TableCombinationDrawer } from "./TableCombinationDrawer";
 import { TableDetailDrawer } from "./TableDetailDrawer";
+import { ZoneFloorPlan } from "./ZoneFloorPlan";
 
 type ComboRow = {
   combination: TableCombination;
@@ -42,6 +43,7 @@ export function TablesPanel({ restaurantId }: { restaurantId: string }) {
     tableId: null,
   });
   const [confirmDeleteCombo, setConfirmDeleteCombo] = useState<ComboRow | null>(null);
+  const [zoneView, setZoneView] = useState<Record<string, "visual" | "list">>({});
 
   async function reload() {
     const [{ data: z }, { data: t }] = await Promise.all([
