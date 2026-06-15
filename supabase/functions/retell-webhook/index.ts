@@ -47,6 +47,8 @@ interface Payload {
   zone?: string;
   special_requests?: string;
   time_preference?: string;
+  // update: exclude the reservation being modified from occupancy checks
+  exclude_reservation_id?: string;
 }
 
 function dayOfWeekFromISO(d: string): number {
