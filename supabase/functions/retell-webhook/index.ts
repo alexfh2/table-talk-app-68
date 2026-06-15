@@ -191,7 +191,8 @@ async function validateSlot(restaurantId: string, date: string, time: string) {
 type AutoAssign =
   | { tableId: string; needsReview: false; tableLabel: string; reason: "assigned"; freeSeats: number }
   | { tableId: null; needsReview: true; reason: "needs_human_review"; freeSeats: number }
-  | { tableId: null; needsReview: false; reason: "no_capacity"; freeSeats: number };
+  | { tableId: null; needsReview: false; reason: "no_capacity"; freeSeats: number }
+  | { tableId: null; needsReview: false; reason: "no_tables_configured"; freeSeats: 0 };
 
 const DEFAULT_SLOT_MIN = 120;
 
@@ -216,7 +217,7 @@ async function autoAssignTable(opts: {
   const [{ data: tables }, { data: reservations }] = await Promise.all([
     supabase
       .from("restaurant_tables")
-      .select("id, label, min_capacity, max_capacity, sort_order, zone_id, restaurant_zones(name)")
+      .select("id, label, min_capacity, max_capacity, capacity, sort_order, zone_id, restaurant_zones(name)")
       .eq("restaurant_id", opts.restaurantId)
       .eq("is_active", true),
     supabase
@@ -227,10 +228,20 @@ async function autoAssignTable(opts: {
       .not("status", "in", "(cancelled,no_show)"),
   ]);
 
-  const activeTables = (tables ?? []) as Array<{
-    id: string; label: string; min_capacity: number; max_capacity: number; sort_order: number | null;
+  const rawTables = (tables ?? []) as Array<{
+    id: string; label: string; min_capacity: number; max_capacity: number | null;
+    capacity?: number | null; sort_order: number | null;
     zone_id: string; restaurant_zones: { name: string } | null;
   }>;
+  // Normalize capacity: prefer max_capacity, fall back to capacity if present.
+  const activeTables = rawTables.map((t) => ({
+    ...t,
+    max_capacity: t.max_capacity ?? t.capacity ?? 0,
+  }));
+
+  if (activeTables.length === 0) {
+    return { tableId: null, needsReview: false, reason: "no_tables_configured", freeSeats: 0 };
+  }
 
   const occupied = new Set<string>();
   for (const r of reservations ?? []) {
@@ -243,14 +254,22 @@ async function autoAssignTable(opts: {
   const freeSeats = free.reduce((s, t) => s + (t.max_capacity ?? 0), 0);
 
   const preferred = opts.preferredZone?.trim().toLowerCase() ?? "";
+  const zoneExists = preferred
+    ? activeTables.some((t) => (t.restaurant_zones?.name ?? "").trim().toLowerCase() === preferred)
+    : false;
+  // If the requested zone doesn't match any real zone, ignore it (fallback to no preference)
+  // instead of artificially limiting candidates.
+  const effectivePreferred = preferred && zoneExists ? preferred : "";
   const inZone = (t: typeof activeTables[number]) =>
-    preferred ? (t.restaurant_zones?.name ?? "").trim().toLowerCase() === preferred : false;
+    effectivePreferred
+      ? (t.restaurant_zones?.name ?? "").trim().toLowerCase() === effectivePreferred
+      : false;
 
   const candidates = free
     .filter((t) => t.max_capacity >= opts.partySize)
     .sort((a, b) => {
       // 1) Preferred zone first
-      if (preferred) {
+      if (effectivePreferred) {
         const az = inZone(a) ? 0 : 1;
         const bz = inZone(b) ? 0 : 1;
         if (az !== bz) return az - bz;
@@ -286,11 +305,13 @@ async function createReservation(p: Payload) {
     preferredZone: p.preferred_zone ?? p.zone,
   });
 
-  if (assignment.reason === "no_capacity") {
+  if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
     return json({
       ok: false,
-      error: "no_capacity",
-      message: "No hay capacidad disponible para esa hora.",
+      error: assignment.reason,
+      message: assignment.reason === "no_tables_configured"
+        ? "El restaurante no tiene mesas configuradas."
+        : "No hay capacidad disponible para esa hora.",
       free_seats: assignment.freeSeats,
     }, 409);
   }
@@ -414,15 +435,17 @@ async function checkAvailability(p: Payload) {
         excludeReservationId: p.exclude_reservation_id,
       });
 
-      if (assignment.reason === "no_capacity") {
+      if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
         return json({
           ok: true,
           date: p.date,
           time: p.reservation_time,
           is_open: true,
           available: false,
-          reason: "no_capacity",
-          message: "No hay capacidad disponible para esa hora.",
+          reason: assignment.reason,
+          message: assignment.reason === "no_tables_configured"
+            ? "El restaurante no tiene mesas configuradas."
+            : "No hay capacidad disponible para esa hora.",
           assignment_preview: {
             table_id: null,
             needs_review: false,
@@ -644,12 +667,14 @@ async function updateReservation(p: Payload) {
       excludeReservationId: p.reservation_id,
     });
 
-    if (assignment.reason === "no_capacity") {
+    if (assignment.reason === "no_capacity" || assignment.reason === "no_tables_configured") {
       return json({
         ok: false,
-        error: "no_capacity",
-        reason: "no_capacity",
-        message: "No hay capacidad disponible para esa hora.",
+        error: assignment.reason,
+        reason: assignment.reason,
+        message: assignment.reason === "no_tables_configured"
+          ? "El restaurante no tiene mesas configuradas."
+          : "No hay capacidad disponible para esa hora.",
         free_seats: assignment.freeSeats,
       }, 409);
     }
