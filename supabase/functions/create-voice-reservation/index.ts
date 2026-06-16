@@ -72,6 +72,10 @@ interface VoiceReservationResponse {
   reviewReasons: string[];
   blockingReason?: string;
   idempotent?: boolean;
+  debug?: {
+    receivedPayloadKeys: string[];
+    normalizedPayload: VoiceReservationPayload;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -540,19 +544,62 @@ function evaluateRules(
 }
 
 // ---------------------------------------------------------------------------
+// Normalización de payload (compatibilidad N8N/Retell aliases)
+// ---------------------------------------------------------------------------
+
+function normalizePayload(raw: Record<string, unknown>): VoiceReservationPayload {
+  const pickString = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = raw[k];
+      if (typeof v === "string") return v;
+    }
+    return undefined;
+  };
+  const pickNumber = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = raw[k];
+      if (typeof v === "number") return v;
+      if (typeof v === "string") {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+    return undefined;
+  };
+
+  return {
+    restaurantId: pickString("restaurantId"),
+    customerName: pickString("customerName", "name"),
+    phone: pickString("phone", "customerPhone") ?? null,
+    date: pickString("date", "reservationDate"),
+    time: pickString("time", "reservationTime"),
+    partySize: pickNumber("partySize", "guests", "people"),
+    notes: pickString("notes", "note") ?? null,
+    preferredZoneId: pickString("preferredZoneId") ?? null,
+    preferredZoneName: pickString("preferredZoneName", "zoneName") ?? null,
+    transcript: pickString("transcript") ?? null,
+    callId: pickString("callId") ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
 function validatePayload(p: VoiceReservationPayload):
   | { ok: true; data: Required<Pick<VoiceReservationPayload, "restaurantId" | "customerName" | "date" | "time" | "partySize">> & VoiceReservationPayload }
   | { ok: false; reason: string } {
-  if (!p.restaurantId) return { ok: false, reason: "Falta restaurantId." };
+  if (!p.restaurantId) return { ok: false, reason: "Falta el identificador del restaurante." };
   if (!p.customerName || !p.customerName.trim())
     return { ok: false, reason: "Falta el nombre del cliente." };
-  if (!p.date || !/^\d{4}-\d{2}-\d{2}$/.test(p.date))
+  if (!p.date) return { ok: false, reason: "Falta la fecha de la reserva." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date))
     return { ok: false, reason: "Fecha inválida (YYYY-MM-DD)." };
-  if (!p.time || !/^\d{2}:\d{2}(:\d{2})?$/.test(p.time))
+  if (!p.time) return { ok: false, reason: "Falta la hora de la reserva." };
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(p.time))
     return { ok: false, reason: "Hora inválida (HH:MM)." };
+  if (p.partySize === undefined || p.partySize === null)
+    return { ok: false, reason: "Falta el número de personas." };
   const ps = Number(p.partySize);
   if (!Number.isFinite(ps) || ps < 1)
     return { ok: false, reason: "Número de personas inválido." };
@@ -574,7 +621,7 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   if (!valid.ok) {
     return {
       success: false,
-      status: "requires_human",
+      status: "blocked",
       channel: "future_voice",
       reviewReasons: [valid.reason],
       messageForAgent: "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
@@ -989,15 +1036,26 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  let payload: VoiceReservationPayload;
+  let rawPayload: Record<string, unknown>;
   try {
-    payload = (await req.json()) as VoiceReservationPayload;
+    rawPayload = (await req.json()) as Record<string, unknown>;
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
 
+  const payload = normalizePayload(rawPayload);
+  const receivedPayloadKeys = Object.keys(rawPayload);
+  const env = Deno.env.get("ENV");
+  const isDev = !env || env === "development" || env === "dev";
+
   try {
     const result = await handle(payload);
+    if (isDev) {
+      (result as any).debug = {
+        receivedPayloadKeys,
+        normalizedPayload: payload,
+      };
+    }
     if (result.status === "blocked" || (!result.success && !result.reservationId)) {
       console.log("[create-voice-reservation] blocked", {
         callId: payload.callId ?? null,
@@ -1008,17 +1066,21 @@ Deno.serve(async (req: Request) => {
     }
     return json(result, result.success ? 200 : 200);
   } catch (err) {
-    return json(
-      {
-        success: false,
-        status: "requires_human",
-        channel: "future_voice",
-        reviewReasons: [],
-        messageForAgent:
-          "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
-        blockingReason: String((err as Error)?.message ?? err),
-      },
-      500,
-    );
+    const errorResponse: VoiceReservationResponse = {
+      success: false,
+      status: "requires_human",
+      channel: "future_voice",
+      reviewReasons: [],
+      messageForAgent:
+        "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
+      blockingReason: String((err as Error)?.message ?? err),
+    };
+    if (isDev) {
+      (errorResponse as any).debug = {
+        receivedPayloadKeys,
+        normalizedPayload: payload,
+      };
+    }
+    return json(errorResponse, 500);
   }
 });
