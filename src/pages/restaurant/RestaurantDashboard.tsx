@@ -95,6 +95,13 @@ function formatHeaderDate(selected: Date, todayISO: string) {
 
 function buildSlotList(svc: ScheduleRow | null) {
   if (!svc || !svc.opening_time || !svc.closing_time) return [] as string[];
+  // When the service is configured by shifts, the only valid reservation times
+  // are the explicit shift_times. Don't expose intermediate slots.
+  if (svc.booking_mode === "shifts" && Array.isArray(svc.shift_times) && svc.shift_times.length > 0) {
+    return Array.from(
+      new Set(svc.shift_times.map((t) => String(t).slice(0, 5))),
+    ).sort();
+  }
   const [oh, om] = svc.opening_time.split(":").map(Number);
   const [ch, cm] = svc.closing_time.split(":").map(Number);
   const start = oh * 60 + om;
@@ -219,10 +226,26 @@ export default function RestaurantDashboard() {
         return time >= o && time < c;
       });
     };
+    // Build the union of displayed slots for today (shift-aware via buildSlotList).
+    const allSlots = Array.from(
+      new Set(todaySchedule.flatMap((s) => buildSlotList(s))),
+    );
+    const toMin = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + m;
+    };
+    const DURATION_MIN = 90;
     for (const r of todayRes) {
       if (r.status === "requires_human" && !inActiveService(r.reservation_time)) continue;
-      const key = r.reservation_time.slice(0, 5);
-      map.set(key, (map.get(key) ?? 0) + r.party_size);
+      // Each reservation occupies its start time and any displayed slot that falls
+      // within the next DURATION_MIN minutes.
+      const start = toMin(r.reservation_time.slice(0, 5));
+      for (const s of allSlots) {
+        const sm = toMin(s);
+        if (sm >= start && sm < start + DURATION_MIN) {
+          map.set(s, (map.get(s) ?? 0) + r.party_size);
+        }
+      }
     }
     return map;
   }, [todayRes, todaySchedule]);
