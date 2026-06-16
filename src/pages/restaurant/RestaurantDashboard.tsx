@@ -95,6 +95,13 @@ function formatHeaderDate(selected: Date, todayISO: string) {
 
 function buildSlotList(svc: ScheduleRow | null) {
   if (!svc || !svc.opening_time || !svc.closing_time) return [] as string[];
+  // When the service is configured by shifts, the only valid reservation times
+  // are the explicit shift_times. Don't expose intermediate slots.
+  if (svc.booking_mode === "shifts" && Array.isArray(svc.shift_times) && svc.shift_times.length > 0) {
+    return Array.from(
+      new Set(svc.shift_times.map((t) => String(t).slice(0, 5))),
+    ).sort();
+  }
   const [oh, om] = svc.opening_time.split(":").map(Number);
   const [ch, cm] = svc.closing_time.split(":").map(Number);
   const start = oh * 60 + om;
