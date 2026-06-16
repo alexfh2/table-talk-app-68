@@ -401,8 +401,128 @@ async function createReservation(p: Payload) {
   if (!p.restaurant_id || !p.customer_name || !p.reservation_date || !p.reservation_time || !p.party_size) {
     return json({ ok: false, error: "missing_fields" }, 400);
   }
-  const v = await validateSlot(p.restaurant_id, p.reservation_date, p.reservation_time);
-  if (!v.ok) return json(v, 409);
+
+  // Delegate to the new create-voice-reservation edge function so we share
+  // a single source of truth for rules, recommendations, shift-mode
+  // validation, idempotency and table assignment.
+  const baseUrl = Deno.env.get("SUPABASE_URL");
+  const token = Deno.env.get("RETELL_WEBHOOK_TOKEN") ?? "";
+  if (!baseUrl) return json({ ok: false, error: "server_not_configured" }, 500);
+
+  const callId =
+    (p as any).callId ?? (p as any).call_id ?? (p as any).conversation_id ?? null;
+
+  const body = {
+    restaurantId: p.restaurant_id,
+    customerName: p.customer_name,
+    phone: p.customer_phone ?? null,
+    date: p.reservation_date,
+    time: p.reservation_time,
+    partySize: p.party_size,
+    notes: p.customer_notes ?? p.special_requests ?? null,
+    preferredZoneName: p.preferred_zone ?? p.zone ?? null,
+    preferredZoneId: (p as any).preferredZoneId ?? null,
+    transcript: (p as any).transcript ?? null,
+    callId,
+  };
+
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/functions/v1/create-voice-reservation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-webhook-token": token,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    return json(
+      {
+        ok: false,
+        error: "voice_reservation_unreachable",
+        message: "No he podido guardar la reserva. Vuelve a intentarlo, por favor.",
+        debug: { reason: String(e) },
+      },
+      502,
+    );
+  }
+
+  let result: any;
+  try {
+    result = await res.json();
+  } catch {
+    return json(
+      {
+        ok: false,
+        error: "voice_reservation_invalid_response",
+        message: "No he podido guardar la reserva. Vuelve a intentarlo, por favor.",
+      },
+      502,
+    );
+  }
+
+  return json(normalizeVoiceReservationResponse(result));
+}
+
+/**
+ * Map the new VoiceReservationResponse shape back to the legacy
+ * `{ ok, reservation, message, ... }` envelope that the existing Retell
+ * agent ("Sofía") understands.
+ *
+ * - confirmed       → ok:true, reservation.status:"confirmed"
+ * - requires_human  → ok:true, reservation.status:"requires_human", needs_review:true
+ * - blocked         → ok:false, available:false, reason:"blocked"
+ *
+ * `messageForAgent` is always surfaced as `message` (the spoken line).
+ * Technical fields (debug, reviewReasons, recommendedAssignment) are kept
+ * in separate keys so the agent never reads them aloud.
+ */
+function normalizeVoiceReservationResponse(r: any) {
+  const status = r?.status as "confirmed" | "requires_human" | "blocked" | undefined;
+  const message = r?.messageForAgent ?? "";
+  const base = {
+    message,
+    review_reasons: r?.reviewReasons ?? [],
+    recommended_assignment: r?.recommendedAssignment ?? null,
+    assigned_tables: r?.assignedTables ?? [],
+    available_turns: r?.availableTurns ?? undefined,
+    idempotent: r?.idempotent ?? undefined,
+    debug: r?.debug ?? undefined,
+  };
+
+  if (status === "confirmed") {
+    return {
+      ok: true,
+      available: true,
+      reservation: {
+        id: r?.reservationId ?? null,
+        status: "confirmed",
+      },
+      ...base,
+    };
+  }
+  if (status === "requires_human") {
+    return {
+      ok: true,
+      available: true,
+      needs_review: true,
+      reservation: {
+        id: r?.reservationId ?? null,
+        status: "requires_human",
+      },
+      ...base,
+    };
+  }
+  // blocked or unknown
+  return {
+    ok: false,
+    available: false,
+    reason: "blocked",
+    blocking_reason: r?.blockingReason ?? null,
+    ...base,
+  };
+}
 
   // Auto-assign the smallest table that fits the party.
   const assignment = await autoAssignTable({
@@ -1029,6 +1149,7 @@ Deno.serve(async (req) => {
   } catch {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
+  payload = normalizeAliases(payload);
 
   try {
     switch (payload.action) {
