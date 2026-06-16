@@ -589,13 +589,17 @@ function normalizePayload(raw: Record<string, unknown>): VoiceReservationPayload
 function validatePayload(p: VoiceReservationPayload):
   | { ok: true; data: Required<Pick<VoiceReservationPayload, "restaurantId" | "customerName" | "date" | "time" | "partySize">> & VoiceReservationPayload }
   | { ok: false; reason: string } {
-  if (!p.restaurantId) return { ok: false, reason: "Falta restaurantId." };
+  if (!p.restaurantId) return { ok: false, reason: "Falta el identificador del restaurante." };
   if (!p.customerName || !p.customerName.trim())
     return { ok: false, reason: "Falta el nombre del cliente." };
-  if (!p.date || !/^\d{4}-\d{2}-\d{2}$/.test(p.date))
+  if (!p.date) return { ok: false, reason: "Falta la fecha de la reserva." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.date))
     return { ok: false, reason: "Fecha inválida (YYYY-MM-DD)." };
-  if (!p.time || !/^\d{2}:\d{2}(:\d{2})?$/.test(p.time))
+  if (!p.time) return { ok: false, reason: "Falta la hora de la reserva." };
+  if (!/^\d{2}:\d{2}(:\d{2})?$/.test(p.time))
     return { ok: false, reason: "Hora inválida (HH:MM)." };
+  if (p.partySize === undefined || p.partySize === null)
+    return { ok: false, reason: "Falta el número de personas." };
   const ps = Number(p.partySize);
   if (!Number.isFinite(ps) || ps < 1)
     return { ok: false, reason: "Número de personas inválido." };
