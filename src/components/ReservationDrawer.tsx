@@ -67,6 +67,7 @@ export function ReservationDrawer({
   const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id" | "customer_name">[]>([]);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
