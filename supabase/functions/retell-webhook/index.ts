@@ -437,6 +437,7 @@ async function createReservation(p: Payload) {
       body: JSON.stringify(body),
     });
   } catch (e) {
+    console.error("[retell-webhook] create_reservation delegate unreachable", { error: String(e) });
     return json(
       {
         ok: false,
@@ -452,6 +453,7 @@ async function createReservation(p: Payload) {
   try {
     result = await res.json();
   } catch {
+    console.error("[retell-webhook] create_reservation invalid JSON from delegate", { status: res.status });
     return json(
       {
         ok: false,
@@ -462,6 +464,12 @@ async function createReservation(p: Payload) {
     );
   }
 
+  console.log("[retell-webhook] create_reservation delegated", {
+    delegate: "create-voice-reservation",
+    delegate_status: res.status,
+    delegate_result_status: result?.status,
+    reservation_id: result?.reservationId ?? null,
+  });
   return json(normalizeVoiceReservationResponse(result));
 }
 
