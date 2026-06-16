@@ -49,6 +49,42 @@ interface Payload {
   time_preference?: string;
   // update: exclude the reservation being modified from occupancy checks
   exclude_reservation_id?: string;
+  // camelCase aliases (compat with new create-voice-reservation contract)
+  restaurantId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  reservationDate?: string;
+  reservationTime?: string;
+  partySize?: number;
+  notes?: string;
+  preferredZoneName?: string;
+  preferredZoneId?: string;
+  zoneName?: string;
+  transcript?: string;
+  callId?: string;
+  conversation_id?: string;
+  call_id?: string;
+  excludeReservationId?: string;
+}
+
+/**
+ * Normalize incoming payload: accept both snake_case (legacy Retell flow) and
+ * camelCase (new create-voice-reservation contract) field names, copying the
+ * value into the legacy snake_case slot so the rest of this router keeps
+ * working unchanged.
+ */
+function normalizeAliases(p: Payload): Payload {
+  const out: Payload = { ...p };
+  out.restaurant_id = out.restaurant_id ?? out.restaurantId;
+  out.customer_name = out.customer_name ?? out.customerName;
+  out.customer_phone = out.customer_phone ?? out.customerPhone ?? out.phone;
+  out.reservation_date = out.reservation_date ?? out.reservationDate ?? out.date;
+  out.reservation_time = out.reservation_time ?? out.reservationTime;
+  out.party_size = out.party_size ?? out.partySize;
+  out.customer_notes = out.customer_notes ?? out.notes ?? out.special_requests;
+  out.preferred_zone = out.preferred_zone ?? out.zone ?? out.preferredZoneName ?? out.zoneName;
+  out.exclude_reservation_id = out.exclude_reservation_id ?? out.excludeReservationId;
+  return out;
 }
 
 function dayOfWeekFromISO(d: string): number {
