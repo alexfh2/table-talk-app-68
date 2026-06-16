@@ -418,7 +418,7 @@ export function ReservationDrawer({
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
   const isCreate = !initial && mode === "create";
-  const canSubmit = (isCreate || isEdit) ? !!evaluation?.canSave : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
+  const canSubmit = (isCreate || isEdit) ? (!!evaluation?.canSave && !missingPhone) : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
   const createButtonLabel =
     evaluation?.suggestedStatus === "requires_human" ? "Guardar para revisar" : "Guardar reserva";
 
