@@ -621,7 +621,7 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   if (!valid.ok) {
     return {
       success: false,
-      status: "requires_human",
+      status: "blocked",
       channel: "future_voice",
       reviewReasons: [valid.reason],
       messageForAgent: "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
