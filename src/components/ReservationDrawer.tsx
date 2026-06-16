@@ -560,8 +560,15 @@ export function ReservationDrawer({
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Teléfono</Label>
-                <Input value={v.customer_phone ?? ""} onChange={(e) => setV({ ...v, customer_phone: e.target.value })} />
+                <Label>Teléfono <span className="text-terracotta">*</span></Label>
+                <Input
+                  value={v.customer_phone ?? ""}
+                  onBlur={() => setPhoneTouched(true)}
+                  onChange={(e) => setV({ ...v, customer_phone: e.target.value })}
+                />
+                {phoneTouched && missingPhone && (
+                  <p className="text-xs text-terracotta">Introduce un teléfono de contacto.</p>
+                )}
               </div>
             </div>
           </section>
