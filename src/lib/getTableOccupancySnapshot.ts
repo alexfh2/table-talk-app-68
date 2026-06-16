@@ -282,7 +282,10 @@ export async function getTableOccupancySnapshot(opts: {
       }
     }
     const min = c.min_capacity ?? 1;
-    const hasInactive = members.some((t) => !t.is_active) || !c.is_active;
+    const hasInactive =
+      members.length === 0 ||
+      members.some((t) => !t.is_active) ||
+      !c.is_active;
     const blockedCount = members.filter((t) => occupiedBy.has(t.id)).length;
 
     let status: CombinationOccupancyStatus;
