@@ -370,11 +370,18 @@ export function TodayMapView({
             <span className="text-2xl tabular-nums text-foreground leading-none">
               {summary.availableCombos}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {summary.availableCombos === 1
-                ? "combinación libre"
-                : "combinaciones libres"}
-            </span>
+            <HoverCard>
+              <HoverCardTrigger asChild>
+                <span className="text-xs text-muted-foreground cursor-help underline decoration-dotted">
+                  {summary.availableCombos === 1
+                    ? "unión de mesas disponible"
+                    : "uniones de mesas disponibles"}
+                </span>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-64 text-xs">
+                Opciones para juntar mesas y aceptar grupos grandes.
+              </HoverCardContent>
+            </HoverCard>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
