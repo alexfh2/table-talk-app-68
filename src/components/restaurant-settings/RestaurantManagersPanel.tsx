@@ -83,7 +83,13 @@ export function RestaurantManagersPanel({ restaurantId }: { restaurantId: string
       setPassword(generatePassword());
       refresh();
     } catch (err: any) {
-      toast.error(err?.message ?? "No se pudo crear");
+      const msg = String(err?.message ?? "");
+      if (/weak|known|guess|pwned/i.test(msg)) {
+        setPassword(generatePassword());
+        toast.error("Esa contraseña aparece en filtraciones conocidas. He generado una nueva, vuelve a intentarlo.");
+      } else {
+        toast.error(msg || "No se pudo crear");
+      }
     } finally {
       setLoading(false);
     }
