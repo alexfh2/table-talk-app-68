@@ -72,6 +72,7 @@ interface VoiceReservationResponse {
   reviewReasons: string[];
   blockingReason?: string;
   idempotent?: boolean;
+  availableTurns?: string[];
   debug?: {
     receivedPayloadKeys: string[];
     normalizedPayload: VoiceReservationPayload;
@@ -679,15 +680,14 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
   // 1) Horario efectivo
   const sched = await getEffectiveServices(p.restaurantId, p.date);
   const time = p.time;
-  const inService =
-    sched.services.length > 0 &&
-    sched.services.some((s: any) =>
-      isTimeWithinService(
-        time,
-        (s.opening_time ?? "").slice(0, 5),
-        (s.closing_time ?? "").slice(0, 5),
-      ),
-    );
+  const matchingService = sched.services.find((s: any) =>
+    isTimeWithinService(
+      time,
+      (s.opening_time ?? "").slice(0, 5),
+      (s.closing_time ?? "").slice(0, 5),
+    ),
+  );
+  const inService = sched.services.length > 0 && !!matchingService;
   if (sched.services.length === 0) {
     const reason =
       sched.source === "exception"
@@ -711,6 +711,33 @@ async function handle(payload: VoiceReservationPayload): Promise<VoiceReservatio
       messageForAgent: "No hay disponibilidad para esa hora. Puedo mirar otra hora.",
       blockingReason: "La hora solicitada está fuera del horario de servicio.",
     };
+  }
+
+  // 1.b) Modo por turnos: la hora debe coincidir con un turno exacto.
+  if (matchingService && (matchingService as any).booking_mode === "shifts") {
+    const rawShifts = (matchingService as any).shift_times;
+    const shiftList: string[] = Array.isArray(rawShifts)
+      ? rawShifts
+          .map((t: unknown) => (typeof t === "string" ? t.slice(0, 5) : null))
+          .filter((t: string | null): t is string => !!t)
+      : [];
+    const turnsSorted = [...new Set(shiftList)].sort();
+    if (turnsSorted.length > 0 && !turnsSorted.includes(time)) {
+      const period = (matchingService as any).service_period === "lunch" ? "el mediodía" : "la noche";
+      const list =
+        turnsSorted.length === 1
+          ? `a las ${turnsSorted[0]}`
+          : `a las ${turnsSorted.slice(0, -1).join(", ")} o a las ${turnsSorted[turnsSorted.length - 1]}`;
+      return {
+        success: false,
+        status: "blocked",
+        channel: "future_voice",
+        reviewReasons: [],
+        availableTurns: turnsSorted,
+        messageForAgent: `Para ${period} tenemos disponibilidad ${list}. ¿Cuál te va mejor?`,
+        blockingReason: "La hora solicitada no coincide con un turno disponible.",
+      };
+    }
   }
 
   // 2) Reglas
