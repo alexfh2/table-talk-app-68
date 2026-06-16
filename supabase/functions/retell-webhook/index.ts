@@ -49,6 +49,42 @@ interface Payload {
   time_preference?: string;
   // update: exclude the reservation being modified from occupancy checks
   exclude_reservation_id?: string;
+  // camelCase aliases (compat with new create-voice-reservation contract)
+  restaurantId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  reservationDate?: string;
+  reservationTime?: string;
+  partySize?: number;
+  notes?: string;
+  preferredZoneName?: string;
+  preferredZoneId?: string;
+  zoneName?: string;
+  transcript?: string;
+  callId?: string;
+  conversation_id?: string;
+  call_id?: string;
+  excludeReservationId?: string;
+}
+
+/**
+ * Normalize incoming payload: accept both snake_case (legacy Retell flow) and
+ * camelCase (new create-voice-reservation contract) field names, copying the
+ * value into the legacy snake_case slot so the rest of this router keeps
+ * working unchanged.
+ */
+function normalizeAliases(p: Payload): Payload {
+  const out: Payload = { ...p };
+  out.restaurant_id = out.restaurant_id ?? out.restaurantId;
+  out.customer_name = out.customer_name ?? out.customerName;
+  out.customer_phone = out.customer_phone ?? out.customerPhone ?? out.phone;
+  out.reservation_date = out.reservation_date ?? out.reservationDate ?? out.date;
+  out.reservation_time = out.reservation_time ?? out.reservationTime;
+  out.party_size = out.party_size ?? out.partySize;
+  out.customer_notes = out.customer_notes ?? out.notes ?? out.special_requests;
+  out.preferred_zone = out.preferred_zone ?? out.zone ?? out.preferredZoneName ?? out.zoneName;
+  out.exclude_reservation_id = out.exclude_reservation_id ?? out.excludeReservationId;
+  return out;
 }
 
 function dayOfWeekFromISO(d: string): number {
@@ -365,93 +401,127 @@ async function createReservation(p: Payload) {
   if (!p.restaurant_id || !p.customer_name || !p.reservation_date || !p.reservation_time || !p.party_size) {
     return json({ ok: false, error: "missing_fields" }, 400);
   }
-  const v = await validateSlot(p.restaurant_id, p.reservation_date, p.reservation_time);
-  if (!v.ok) return json(v, 409);
 
-  // Auto-assign the smallest table that fits the party.
-  const assignment = await autoAssignTable({
+  // Delegate to the new create-voice-reservation edge function so we share
+  // a single source of truth for rules, recommendations, shift-mode
+  // validation, idempotency and table assignment.
+  const baseUrl = Deno.env.get("SUPABASE_URL");
+  const token = Deno.env.get("RETELL_WEBHOOK_TOKEN") ?? "";
+  if (!baseUrl) return json({ ok: false, error: "server_not_configured" }, 500);
+
+  const callId =
+    (p as any).callId ?? (p as any).call_id ?? (p as any).conversation_id ?? null;
+
+  const body = {
     restaurantId: p.restaurant_id,
+    customerName: p.customer_name,
+    phone: p.customer_phone ?? null,
     date: p.reservation_date,
     time: p.reservation_time,
     partySize: p.party_size,
-    preferredZone: p.preferred_zone ?? p.zone,
-  });
+    notes: p.customer_notes ?? p.special_requests ?? null,
+    preferredZoneName: p.preferred_zone ?? p.zone ?? null,
+    preferredZoneId: (p as any).preferredZoneId ?? null,
+    transcript: (p as any).transcript ?? null,
+    callId,
+  };
 
-  if (
-    assignment.reason === "no_capacity" ||
-    assignment.reason === "no_tables_configured" ||
-    assignment.reason === "zone_unavailable"
-  ) {
-    return json({
-      ok: false,
-      error: assignment.reason,
-      message:
-        assignment.reason === "no_tables_configured"
-          ? "El restaurante no tiene mesas configuradas."
-          : assignment.reason === "zone_unavailable"
-            ? `No hay disponibilidad en la zona "${p.preferred_zone ?? p.zone}".`
-            : "No hay capacidad disponible para esa hora.",
-      free_seats: assignment.freeSeats,
-      available_zones: assignment.debug?.available_zones ?? [],
-      availability_debug: assignment.debug,
-    }, 409);
-  }
-
-  const status = assignment.needsReview ? "requires_human" : "confirmed";
-  const internalNotes = assignment.needsReview
-    ? "⚠ Sin mesa única que encaje. Requiere reasignación manual."
-    : null;
-
-  // Merge optional zone + special_requests into customer_notes
-  // (the table has no dedicated columns for them).
-  const extraParts: string[] = [];
-  if (p.customer_notes) extraParts.push(p.customer_notes);
-  if (p.zone || p.preferred_zone) extraParts.push(`Zona preferida: ${p.zone ?? p.preferred_zone}`);
-  if (p.special_requests) extraParts.push(`Peticiones: ${p.special_requests}`);
-  const mergedNotes = extraParts.length ? extraParts.join(" | ") : null;
-
-  const { data, error } = await supabase
-    .from("reservations")
-    .insert({
-      restaurant_id: p.restaurant_id,
-      customer_name: p.customer_name,
-      customer_phone: p.customer_phone ?? null,
-      reservation_date: p.reservation_date,
-      reservation_time: p.reservation_time,
-      party_size: p.party_size,
-      customer_notes: mergedNotes,
-      internal_notes: internalNotes,
-      table_id: assignment.tableId,
-      status,
-      channel: "future_voice",
-    })
-    .select()
-    .single();
-  if (error) return json({ ok: false, error: error.message }, 400);
-
-  // Create a handoff request when the reservation needs human review.
-  if (assignment.needsReview && data) {
-    await supabase.from("human_handoff_requests").insert({
-      restaurant_id: p.restaurant_id,
-      reservation_id: data.id,
-      customer_name: p.customer_name,
-      customer_phone: p.customer_phone ?? null,
-      source_channel: "future_voice",
-      reason: "table_auto_assignment_failed",
-      customer_message: `Reserva para ${p.party_size} personas el ${p.reservation_date} a las ${p.reservation_time}. No hay una mesa única que encaje; reasignar manualmente.`,
-      status: "pending",
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl}/functions/v1/create-voice-reservation`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-webhook-token": token,
+      },
+      body: JSON.stringify(body),
     });
+  } catch (e) {
+    return json(
+      {
+        ok: false,
+        error: "voice_reservation_unreachable",
+        message: "No he podido guardar la reserva. Vuelve a intentarlo, por favor.",
+        debug: { reason: String(e) },
+      },
+      502,
+    );
   }
 
-  return json({
-    ok: true,
-    reservation: data,
-    assignment: {
-      table_id: assignment.tableId,
-      needs_review: assignment.needsReview,
-      ...(("tableLabel" in assignment) ? { table_label: assignment.tableLabel } : {}),
-    },
-  });
+  let result: any;
+  try {
+    result = await res.json();
+  } catch {
+    return json(
+      {
+        ok: false,
+        error: "voice_reservation_invalid_response",
+        message: "No he podido guardar la reserva. Vuelve a intentarlo, por favor.",
+      },
+      502,
+    );
+  }
+
+  return json(normalizeVoiceReservationResponse(result));
+}
+
+/**
+ * Map the new VoiceReservationResponse shape back to the legacy
+ * `{ ok, reservation, message, ... }` envelope that the existing Retell
+ * agent ("Sofía") understands.
+ *
+ * - confirmed       → ok:true, reservation.status:"confirmed"
+ * - requires_human  → ok:true, reservation.status:"requires_human", needs_review:true
+ * - blocked         → ok:false, available:false, reason:"blocked"
+ *
+ * `messageForAgent` is always surfaced as `message` (the spoken line).
+ * Technical fields (debug, reviewReasons, recommendedAssignment) are kept
+ * in separate keys so the agent never reads them aloud.
+ */
+function normalizeVoiceReservationResponse(r: any) {
+  const status = r?.status as "confirmed" | "requires_human" | "blocked" | undefined;
+  const message = r?.messageForAgent ?? "";
+  const base = {
+    message,
+    review_reasons: r?.reviewReasons ?? [],
+    recommended_assignment: r?.recommendedAssignment ?? null,
+    assigned_tables: r?.assignedTables ?? [],
+    available_turns: r?.availableTurns ?? undefined,
+    idempotent: r?.idempotent ?? undefined,
+    debug: r?.debug ?? undefined,
+  };
+
+  if (status === "confirmed") {
+    return {
+      ok: true,
+      available: true,
+      reservation: {
+        id: r?.reservationId ?? null,
+        status: "confirmed",
+      },
+      ...base,
+    };
+  }
+  if (status === "requires_human") {
+    return {
+      ok: true,
+      available: true,
+      needs_review: true,
+      reservation: {
+        id: r?.reservationId ?? null,
+        status: "requires_human",
+      },
+      ...base,
+    };
+  }
+  // blocked or unknown
+  return {
+    ok: false,
+    available: false,
+    reason: "blocked",
+    blocking_reason: r?.blockingReason ?? null,
+    ...base,
+  };
 }
 
 async function checkAvailability(p: Payload) {
@@ -993,6 +1063,7 @@ Deno.serve(async (req) => {
   } catch {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
+  payload = normalizeAliases(payload);
 
   try {
     switch (payload.action) {
