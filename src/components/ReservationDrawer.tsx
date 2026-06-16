@@ -240,6 +240,10 @@ export function ReservationDrawer({
     const isNewManual = !initial && !extra?.status;
     let appliedStatus: ReservationStatus | undefined = extra?.status as ReservationStatus | undefined;
     let appliedNotes = v.internal_notes ?? "";
+    if (missingPhone) {
+      toast.error("Introduce un teléfono de contacto.");
+      return;
+    }
     if (isNewManual) {
       if (!evaluation || !evaluation.canSave) {
         toast.error(evaluation?.blockingReason ?? "Revisa los datos de la reserva.");
