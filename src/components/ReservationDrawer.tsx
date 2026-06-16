@@ -67,6 +67,7 @@ export function ReservationDrawer({
   const [dayReservations, setDayReservations] = useState<Pick<Reservation, "reservation_time" | "party_size" | "status" | "id" | "customer_name">[]>([]);
   const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmNoShow, setConfirmNoShow] = useState(false);
   const [statusManuallyChanged, setStatusManuallyChanged] = useState(false);
@@ -239,6 +240,10 @@ export function ReservationDrawer({
     const isNewManual = !initial && !extra?.status;
     let appliedStatus: ReservationStatus | undefined = extra?.status as ReservationStatus | undefined;
     let appliedNotes = v.internal_notes ?? "";
+    if (missingPhone) {
+      toast.error("Introduce un teléfono de contacto.");
+      return;
+    }
     if (isNewManual) {
       if (!evaluation || !evaluation.canSave) {
         toast.error(evaluation?.blockingReason ?? "Revisa los datos de la reserva.");
@@ -361,6 +366,7 @@ export function ReservationDrawer({
   /** Review-mode save: persists current form. Optionally forces status. */
   async function reviewSave(opts: { status?: ReservationStatus; confirmAnyway?: boolean; successMsg: string }) {
     if (!v.customer_name || !v.customer_name.trim()) { toast.error("Introduce el nombre del cliente."); return; }
+    if (missingPhone) { toast.error("Introduce un teléfono de contacto."); return; }
     if (!partySize || partySize < 1) { toast.error("Indica el número de personas."); return; }
     if (!v.reservation_date || !v.reservation_time) { toast.error("Selecciona fecha y hora."); return; }
     if (evaluation?.blockingReason) { toast.error(evaluation.blockingReason); return; }
@@ -417,7 +423,7 @@ export function ReservationDrawer({
   const missingPhone = !v.customer_phone || v.customer_phone.trim().length < 6;
   const nameValid = !!(v.customer_name && v.customer_name.trim());
   const isCreate = !initial && mode === "create";
-  const canSubmit = (isCreate || isEdit) ? !!evaluation?.canSave : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
+  const canSubmit = (isCreate || isEdit) ? (!!evaluation?.canSave && !missingPhone) : nameValid && partySize >= 1 && !!v.reservation_date && !!v.reservation_time;
   const createButtonLabel =
     evaluation?.suggestedStatus === "requires_human" ? "Guardar para revisar" : "Guardar reserva";
 
@@ -554,8 +560,15 @@ export function ReservationDrawer({
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Teléfono</Label>
-                <Input value={v.customer_phone ?? ""} onChange={(e) => setV({ ...v, customer_phone: e.target.value })} />
+                <Label>Teléfono <span className="text-terracotta">*</span></Label>
+                <Input
+                  value={v.customer_phone ?? ""}
+                  onBlur={() => setPhoneTouched(true)}
+                  onChange={(e) => setV({ ...v, customer_phone: e.target.value })}
+                />
+                {phoneTouched && missingPhone && (
+                  <p className="text-xs text-terracotta">Introduce un teléfono de contacto.</p>
+                )}
               </div>
             </div>
           </section>
