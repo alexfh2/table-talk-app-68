@@ -569,7 +569,35 @@ export function ReservationDrawer({
               </div>
               <div className="space-y-1.5">
                 <Label>Hora <span className="text-terracotta">*</span></Label>
-                <Input type="time" value={(v.reservation_time ?? "").slice(0, 5)} onChange={(e) => setV({ ...v, reservation_time: e.target.value })} />
+                {shiftsOnly ? (
+                  <Select
+                    value={(v.reservation_time ?? "").slice(0, 5)}
+                    onValueChange={(val) => setV({ ...v, reservation_time: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={timeOptions.length ? "Selecciona turno" : "Sin turnos disponibles"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    type="time"
+                    list="reservation-time-options"
+                    value={(v.reservation_time ?? "").slice(0, 5)}
+                    onChange={(e) => setV({ ...v, reservation_time: e.target.value })}
+                  />
+                )}
+                {!shiftsOnly && timeOptions.length > 0 && (
+                  <datalist id="reservation-time-options">
+                    {timeOptions.map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
