@@ -363,7 +363,7 @@ export function TodayMapView({
               {summary.guests}
             </span>
             <span className="text-xs text-muted-foreground">
-              {summary.guests === 1 ? "persona" : "personas"}
+              {summary.guests === 1 ? "persona reservada" : "personas reservadas"}
             </span>
           </div>
           <div className="flex items-baseline gap-2">
