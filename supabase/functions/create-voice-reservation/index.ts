@@ -72,6 +72,10 @@ interface VoiceReservationResponse {
   reviewReasons: string[];
   blockingReason?: string;
   idempotent?: boolean;
+  debug?: {
+    receivedPayloadKeys: string[];
+    normalizedPayload: VoiceReservationPayload;
+  };
 }
 
 // ---------------------------------------------------------------------------
