@@ -620,12 +620,18 @@ function validatePayload(p: VoiceReservationPayload):
 async function handle(payload: VoiceReservationPayload): Promise<VoiceReservationResponse> {
   const valid = validatePayload(payload);
   if (!valid.ok) {
+    console.log("[create-voice-reservation] invalid_payload", {
+      callId: payload.callId ?? null,
+      restaurantId: payload.restaurantId ?? null,
+      reason: valid.reason,
+    });
     return {
       success: false,
       status: "blocked",
       channel: "future_voice",
       reviewReasons: [valid.reason],
-      messageForAgent: "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
+      messageForAgent:
+        "No he podido guardar la reserva por un problema técnico. Te paso con el equipo.",
       blockingReason: valid.reason,
     };
   }
