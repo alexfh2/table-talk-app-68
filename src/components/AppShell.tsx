@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
+import { getRestaurant } from "@/lib/queries";
 import mediterraneanBg from "@/assets/mediterranean-bg.png.asset.json";
 
 interface NavItem {
@@ -59,6 +60,15 @@ export function AppShell({
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [restaurantName, setRestaurantName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (variant === "restaurant" && profile?.restaurant_id) {
+      getRestaurant(profile.restaurant_id).then((r) => {
+        if (r?.name) setRestaurantName(r.name);
+      });
+    }
+  }, [variant, profile?.restaurant_id]);
 
   const isItemActive = (it: NavItem) => {
     if (it.end) return location.pathname === it.to;
@@ -114,7 +124,15 @@ export function AppShell({
           <header className="h-14 flex items-center justify-between gap-3 border-b bg-card px-3 sm:px-5">
             <div className="flex items-center gap-2 min-w-0">
               <SidebarTrigger />
-              <h1 className="text-base font-semibold truncate">{title}</h1>
+              {variant === "restaurant" && restaurantName ? (
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <span className="text-lg font-bold text-foreground truncate">{restaurantName}</span>
+                  <span className="text-sm text-muted-foreground">·</span>
+                  <h1 className="text-base font-semibold text-foreground truncate">{title}</h1>
+                </div>
+              ) : (
+                <h1 className="text-base font-semibold truncate">{title}</h1>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex flex-col items-end leading-tight">
