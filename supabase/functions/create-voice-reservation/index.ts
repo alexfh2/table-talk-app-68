@@ -544,6 +544,45 @@ function evaluateRules(
 }
 
 // ---------------------------------------------------------------------------
+// Normalización de payload (compatibilidad N8N/Retell aliases)
+// ---------------------------------------------------------------------------
+
+function normalizePayload(raw: Record<string, unknown>): VoiceReservationPayload {
+  const pickString = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = raw[k];
+      if (typeof v === "string") return v;
+    }
+    return undefined;
+  };
+  const pickNumber = (...keys: string[]) => {
+    for (const k of keys) {
+      const v = raw[k];
+      if (typeof v === "number") return v;
+      if (typeof v === "string") {
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+    return undefined;
+  };
+
+  return {
+    restaurantId: pickString("restaurantId"),
+    customerName: pickString("customerName", "name"),
+    phone: pickString("phone", "customerPhone") ?? null,
+    date: pickString("date", "reservationDate"),
+    time: pickString("time", "reservationTime"),
+    partySize: pickNumber("partySize", "guests", "people"),
+    notes: pickString("notes", "note") ?? null,
+    preferredZoneId: pickString("preferredZoneId") ?? null,
+    preferredZoneName: pickString("preferredZoneName", "zoneName") ?? null,
+    transcript: pickString("transcript") ?? null,
+    callId: pickString("callId") ?? null,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
