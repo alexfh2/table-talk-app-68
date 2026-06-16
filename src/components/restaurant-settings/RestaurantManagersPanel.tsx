@@ -43,9 +43,16 @@ function isPasswordStrongEnough(value: string) {
   );
 }
 
-function extractFunctionError(error: any) {
+async function extractFunctionError(error: any) {
   const message = String(error?.message ?? "");
-  const details = String(error?.context?.body ?? error?.context?._bodyText ?? "");
+  let details = "";
+  try {
+    if (error?.context instanceof Response) {
+      details = await error.context.clone().text();
+    }
+  } catch {
+    details = "";
+  }
   return `${message} ${details}`.trim();
 }
 
@@ -93,7 +100,7 @@ export function RestaurantManagersPanel({ restaurantId }: { restaurantId: string
         body: { email: email.trim(), password, fullName: fullName.trim(), restaurantId },
       });
       if (error) {
-        const msg = extractFunctionError(error);
+        const msg = await extractFunctionError(error);
         if (/weak|known|guess|pwned/i.test(msg)) {
           setPassword(generatePassword());
           toast.error("Esa contraseña aparece en filtraciones conocidas. He generado una nueva, vuelve a intentarlo.");
