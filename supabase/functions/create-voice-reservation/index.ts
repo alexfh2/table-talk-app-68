@@ -1036,15 +1036,26 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  let payload: VoiceReservationPayload;
+  let rawPayload: Record<string, unknown>;
   try {
-    payload = (await req.json()) as VoiceReservationPayload;
+    rawPayload = (await req.json()) as Record<string, unknown>;
   } catch {
     return json({ error: "invalid_json" }, 400);
   }
 
+  const payload = normalizePayload(rawPayload);
+  const receivedPayloadKeys = Object.keys(rawPayload);
+  const env = Deno.env.get("ENV");
+  const isDev = !env || env === "development" || env === "dev";
+
   try {
     const result = await handle(payload);
+    if (isDev) {
+      (result as any).debug = {
+        receivedPayloadKeys,
+        normalizedPayload: payload,
+      };
+    }
     if (result.status === "blocked" || (!result.success && !result.reservationId)) {
       console.log("[create-voice-reservation] blocked", {
         callId: payload.callId ?? null,
@@ -1055,17 +1066,21 @@ Deno.serve(async (req: Request) => {
     }
     return json(result, result.success ? 200 : 200);
   } catch (err) {
-    return json(
-      {
-        success: false,
-        status: "requires_human",
-        channel: "future_voice",
-        reviewReasons: [],
-        messageForAgent:
-          "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
-        blockingReason: String((err as Error)?.message ?? err),
-      },
-      500,
-    );
+    const errorResponse: VoiceReservationResponse = {
+      success: false,
+      status: "requires_human",
+      channel: "future_voice",
+      reviewReasons: [],
+      messageForAgent:
+        "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
+      blockingReason: String((err as Error)?.message ?? err),
+    };
+    if (isDev) {
+      (errorResponse as any).debug = {
+        receivedPayloadKeys,
+        normalizedPayload: payload,
+      };
+    }
+    return json(errorResponse, 500);
   }
 });
