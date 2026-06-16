@@ -11,7 +11,6 @@ import AdminDashboard from "./pages/admin/AdminDashboard";
 import RestaurantsList from "./pages/admin/RestaurantsList";
 import RestaurantNew from "./pages/admin/RestaurantNew";
 import RestaurantConfig from "./pages/admin/RestaurantConfig";
-import ManagersList from "./pages/admin/ManagersList";
 import RestaurantDashboard from "./pages/restaurant/RestaurantDashboard";
 import RestaurantReservations from "./pages/restaurant/RestaurantReservations";
 import RestaurantCalendar from "./pages/restaurant/RestaurantCalendar";
@@ -36,7 +35,6 @@ const App = () => (
             <Route path="/admin/restaurants" element={<RoleGuard allow="platform_admin"><RestaurantsList /></RoleGuard>} />
             <Route path="/admin/restaurants/new" element={<RoleGuard allow="platform_admin"><RestaurantNew /></RoleGuard>} />
             <Route path="/admin/restaurants/:id" element={<RoleGuard allow="platform_admin"><RestaurantConfig /></RoleGuard>} />
-            <Route path="/admin/managers" element={<RoleGuard allow="platform_admin"><ManagersList /></RoleGuard>} />
 
             <Route path="/restaurant" element={<RoleGuard allow="restaurant_admin"><RestaurantDashboard /></RoleGuard>} />
             <Route path="/restaurant/calendar" element={<RoleGuard allow="restaurant_admin"><RestaurantCalendar /></RoleGuard>} />
