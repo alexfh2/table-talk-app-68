@@ -22,6 +22,7 @@ import {
   LogOut,
   UtensilsCrossed,
   Sun,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,6 +38,7 @@ interface NavItem {
 const adminNav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/admin/restaurants", label: "Restaurantes", icon: Store },
+  { to: "/admin/managers", label: "Administradores", icon: Users },
 ];
 
 const restaurantNav: NavItem[] = [

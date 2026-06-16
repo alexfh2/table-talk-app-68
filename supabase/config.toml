@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.create-voice-reservation]
 verify_jwt = false
+
+[functions.create-restaurant-admin]
+verify_jwt = true
