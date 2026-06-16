@@ -366,6 +366,7 @@ export function ReservationDrawer({
   /** Review-mode save: persists current form. Optionally forces status. */
   async function reviewSave(opts: { status?: ReservationStatus; confirmAnyway?: boolean; successMsg: string }) {
     if (!v.customer_name || !v.customer_name.trim()) { toast.error("Introduce el nombre del cliente."); return; }
+    if (missingPhone) { toast.error("Introduce un teléfono de contacto."); return; }
     if (!partySize || partySize < 1) { toast.error("Indica el número de personas."); return; }
     if (!v.reservation_date || !v.reservation_time) { toast.error("Selecciona fecha y hora."); return; }
     if (evaluation?.blockingReason) { toast.error(evaluation.blockingReason); return; }
