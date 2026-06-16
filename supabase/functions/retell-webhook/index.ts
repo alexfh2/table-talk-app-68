@@ -1055,7 +1055,13 @@ Deno.serve(async (req) => {
     req.headers.get("x-webhook-token") ??
     req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
     "";
-  if (provided !== expected) return json({ ok: false, error: "unauthorized" }, 401);
+  if (provided !== expected) {
+    console.warn("[retell-webhook] unauthorized", {
+      hasWebhookToken: !!req.headers.get("x-webhook-token"),
+      hasAuthorization: !!req.headers.get("authorization"),
+    });
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
 
   let payload: Payload;
   try {
@@ -1063,20 +1069,31 @@ Deno.serve(async (req) => {
   } catch {
     return json({ ok: false, error: "invalid_json" }, 400);
   }
+  const rawPayload = payload;
   payload = normalizeAliases(payload);
+  console.log("[retell-webhook] invoked", {
+    function: "retell-webhook",
+    action: payload.action,
+    raw_payload: rawPayload,
+    normalized_payload: payload,
+  });
 
   try {
+    let res: Response;
     switch (payload.action) {
-      case "create_reservation": return await createReservation(payload);
-      case "check_availability": return await checkAvailability(payload);
-      case "update_reservation": return await updateReservation(payload);
-      case "cancel_reservation": return await cancelReservation(payload);
-      case "find_reservation": return await findReservation(payload);
-      case "get_restaurant_info": return await getRestaurantInfo(payload);
-      case "get_restaurant_info_by_phone": return await getRestaurantInfoByPhone(payload);
-      default: return json({ ok: false, error: "unknown_action" }, 400);
+      case "create_reservation": res = await createReservation(payload); break;
+      case "check_availability": res = await checkAvailability(payload); break;
+      case "update_reservation": res = await updateReservation(payload); break;
+      case "cancel_reservation": res = await cancelReservation(payload); break;
+      case "find_reservation": res = await findReservation(payload); break;
+      case "get_restaurant_info": res = await getRestaurantInfo(payload); break;
+      case "get_restaurant_info_by_phone": res = await getRestaurantInfoByPhone(payload); break;
+      default: res = json({ ok: false, error: "unknown_action" }, 400);
     }
+    console.log("[retell-webhook] done", { action: payload.action, status: res.status });
+    return res;
   } catch (e) {
+    console.error("[retell-webhook] error", { action: payload.action, error: String(e) });
     return json({ ok: false, error: String(e) }, 500);
   }
 });
