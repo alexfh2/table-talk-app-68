@@ -137,6 +137,40 @@ export function ReservationDrawer({
   const time = (v.reservation_time ?? "20:00").slice(0, 5);
   const service = time < "17:00" ? "Mediodía" : "Noche";
 
+  // Build the list of allowed reservation times for the selected day.
+  // If any service that day uses shift-based booking, only those discrete
+  // times are offered; otherwise we generate slots inside opening/closing.
+  const timeOptions = useMemo<string[]>(() => {
+    if (!v.reservation_date) return [];
+    const services = effectiveDay(scheduleCtx, v.reservation_date).services;
+    if (!services.length) return [];
+    const toMinLocal = (t: string) => {
+      const [h, m] = t.slice(0, 5).split(":").map(Number);
+      return h * 60 + m;
+    };
+    const fmt = (mins: number) =>
+      `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    const set = new Set<string>();
+    for (const s of services) {
+      if (s.booking_mode === "shifts" && Array.isArray(s.shift_times) && s.shift_times.length) {
+        for (const t of s.shift_times) set.add(t.slice(0, 5));
+        continue;
+      }
+      if (!s.opening_time || !s.closing_time) continue;
+      const step = s.slot_duration_minutes ?? 30;
+      const open = toMinLocal(s.opening_time);
+      const close = toMinLocal(s.closing_time);
+      for (let m = open; m < close; m += step) set.add(fmt(m));
+    }
+    return Array.from(set).sort();
+  }, [scheduleCtx, v.reservation_date]);
+
+  const shiftsOnly = useMemo(() => {
+    if (!v.reservation_date) return false;
+    const services = effectiveDay(scheduleCtx, v.reservation_date).services;
+    return services.length > 0 && services.every((s) => s.booking_mode === "shifts");
+  }, [scheduleCtx, v.reservation_date]);
+
   // Compute capacity for the selected slot
   const toMin = (t: string) => {
     const [h, m] = t.slice(0, 5).split(":").map(Number);
