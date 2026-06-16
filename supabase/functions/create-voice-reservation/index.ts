@@ -1063,8 +1063,15 @@ Deno.serve(async (req: Request) => {
 
   const expectedToken = Deno.env.get("RETELL_WEBHOOK_TOKEN");
   if (expectedToken) {
-    const token = req.headers.get("x-webhook-token");
-    if (token !== expectedToken) {
+    const provided =
+      req.headers.get("x-webhook-token") ??
+      req.headers.get("authorization")?.replace(/^Bearer\s+/i, "") ??
+      "";
+    if (provided !== expectedToken) {
+      console.warn("[create-voice-reservation] unauthorized", {
+        hasWebhookToken: !!req.headers.get("x-webhook-token"),
+        hasAuthorization: !!req.headers.get("authorization"),
+      });
       return json({ error: "unauthorized" }, 401);
     }
   }
