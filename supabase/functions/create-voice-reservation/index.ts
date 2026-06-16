@@ -620,12 +620,18 @@ function validatePayload(p: VoiceReservationPayload):
 async function handle(payload: VoiceReservationPayload): Promise<VoiceReservationResponse> {
   const valid = validatePayload(payload);
   if (!valid.ok) {
+    console.log("[create-voice-reservation] invalid_payload", {
+      callId: payload.callId ?? null,
+      restaurantId: payload.restaurantId ?? null,
+      reason: valid.reason,
+    });
     return {
       success: false,
       status: "blocked",
       channel: "future_voice",
       reviewReasons: [valid.reason],
-      messageForAgent: "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
+      messageForAgent:
+        "No he podido guardar la reserva por un problema técnico. Te paso con el equipo.",
       blockingReason: valid.reason,
     };
   }
@@ -1075,6 +1081,63 @@ Deno.serve(async (req: Request) => {
   const env = Deno.env.get("ENV");
   const isDev = !env || env === "development" || env === "dev";
 
+  console.log("[create-voice-reservation] request", {
+    receivedPayloadKeys,
+    restaurantId: payload.restaurantId ?? null,
+    customerName: payload.customerName ?? null,
+    phone: payload.phone ?? null,
+    date: payload.date ?? null,
+    time: payload.time ?? null,
+    partySize: payload.partySize ?? null,
+    preferredZoneName: payload.preferredZoneName ?? null,
+    callId: payload.callId ?? null,
+  });
+
+  // Detectar payload con esquema antiguo (snake_case / action). El nuevo
+  // contrato usa camelCase y NO incluye `action`. Si llegan claves antiguas
+  // sin las nuevas equivalentes, devolvemos un mensaje claro para el agente
+  // y dejamos rastro en logs para depuración.
+  const legacyKeys = [
+    "action",
+    "restaurant_id",
+    "customer_name",
+    "reservation_date",
+    "reservation_time",
+    "party_size",
+  ];
+  const legacyDetected = legacyKeys.filter((k) => k in rawPayload);
+  const missingNew =
+    !payload.restaurantId ||
+    !payload.customerName ||
+    !payload.date ||
+    !payload.time ||
+    payload.partySize === undefined ||
+    payload.partySize === null;
+  if (legacyDetected.length > 0 && missingNew) {
+    console.log("[create-voice-reservation] legacy_payload_detected", {
+      legacyDetected,
+      receivedPayloadKeys,
+      callId: payload.callId ?? null,
+    });
+    const errorResponse: VoiceReservationResponse = {
+      success: false,
+      status: "blocked",
+      channel: "future_voice",
+      reviewReasons: ["Payload con esquema antiguo (action/snake_case)."],
+      messageForAgent:
+        "No he podido guardar la reserva por un problema técnico. Te paso con el equipo.",
+      blockingReason:
+        "Payload con esquema antiguo. Esperado: restaurantId, customerName, phone, date, time, partySize.",
+    };
+    if (isDev) {
+      (errorResponse as any).debug = {
+        receivedPayloadKeys,
+        normalizedPayload: payload,
+      };
+    }
+    return json(errorResponse, 200);
+  }
+
   try {
     const result = await handle(payload);
     if (isDev) {
@@ -1086,6 +1149,7 @@ Deno.serve(async (req: Request) => {
     if (result.status === "blocked" || (!result.success && !result.reservationId)) {
       console.log("[create-voice-reservation] blocked", {
         callId: payload.callId ?? null,
+        restaurantId: payload.restaurantId ?? null,
         status: result.status,
         blockingReason: result.blockingReason ?? null,
         reviewReasons: result.reviewReasons,
@@ -1093,13 +1157,18 @@ Deno.serve(async (req: Request) => {
     }
     return json(result, result.success ? 200 : 200);
   } catch (err) {
+    console.error("[create-voice-reservation] exception", {
+      callId: payload.callId ?? null,
+      restaurantId: payload.restaurantId ?? null,
+      error: String((err as Error)?.message ?? err),
+    });
     const errorResponse: VoiceReservationResponse = {
       success: false,
       status: "requires_human",
       channel: "future_voice",
       reviewReasons: [],
       messageForAgent:
-        "He tomado nota de la solicitud. El restaurante la revisará y confirmará.",
+        "No he podido guardar la reserva por un problema técnico. Te paso con el equipo.",
       blockingReason: String((err as Error)?.message ?? err),
     };
     if (isDev) {
