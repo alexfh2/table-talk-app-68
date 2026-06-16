@@ -508,7 +508,7 @@ export default function RestaurantDashboard() {
     const allFull = slots.every((t) => cap - (occupancy.get(t) ?? 0) <= 0);
     let headline = label === "Noche" ? "Ocupación de la noche" : `Ocupación del ${label.toLowerCase()}`;
     let sub = "Todas las franjas disponibles.";
-    if (allFull) { headline = `${label} completo`; sub = "Sin franjas libres."; }
+    if (allFull) { headline = `${label} completo`; sub = "Sin plazas de aforo en ninguna franja."; }
     else if (anyBooked) { sub = "Disponibilidad por franja."; }
     else { headline = `${label} tranquilo`; }
     return (
@@ -518,7 +518,7 @@ export default function RestaurantDashboard() {
             <p className="text-base text-foreground">{headline}</p>
             <p className="text-xs text-muted-foreground">{sub}</p>
           </div>
-          <span className="text-[11px] text-muted-foreground">Capacidad: {cap} personas por franja</span>
+          <span className="text-[11px] text-muted-foreground" title="Aforo máximo configurado por franja. No equivale a sillas libres dentro de mesas ya ocupadas.">Aforo del turno: {cap} personas por franja</span>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {slots.map((t) => {
@@ -540,7 +540,7 @@ export default function RestaurantDashboard() {
               >
                 <span className="text-foreground/80 font-medium">{t}</span>
                 <span className="mx-1.5 opacity-50">·</span>
-                {full ? "Completo" : `${free} libres`}
+                {full ? "Completo" : `${free} plazas de aforo`}
               </button>
             );
           })}
@@ -835,7 +835,7 @@ export default function RestaurantDashboard() {
                             >
                               <span className="tabular-nums text-foreground">{t}</span>
                               <span className={cn("text-xs", full ? "text-terracotta" : free <= 4 ? "text-foreground" : "text-muted-foreground")}>
-                                {full ? "Completo" : `${free} libres`}
+                                {full ? "Completo" : `${free} plazas`}
                               </span>
                             </button>
                           );
