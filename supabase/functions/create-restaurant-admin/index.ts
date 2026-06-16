@@ -90,7 +90,9 @@ Deno.serve(async (req) => {
   }
 
   // Upsert profile with role + restaurant assignment
-  const { error: profErr } = await admin.from("profiles").upsert({
+  // Use the caller's client (platform_admin JWT) so the
+  // prevent_profile_privilege_escalation trigger allows role/restaurant changes.
+  const { error: profErr } = await userClient.from("profiles").upsert({
     id: userId,
     email,
     full_name: fullName || email,
