@@ -137,6 +137,40 @@ export function ReservationDrawer({
   const time = (v.reservation_time ?? "20:00").slice(0, 5);
   const service = time < "17:00" ? "Mediodía" : "Noche";
 
+  // Build the list of allowed reservation times for the selected day.
+  // If any service that day uses shift-based booking, only those discrete
+  // times are offered; otherwise we generate slots inside opening/closing.
+  const timeOptions = useMemo<string[]>(() => {
+    if (!v.reservation_date) return [];
+    const services = effectiveDay(scheduleCtx, v.reservation_date).services;
+    if (!services.length) return [];
+    const toMinLocal = (t: string) => {
+      const [h, m] = t.slice(0, 5).split(":").map(Number);
+      return h * 60 + m;
+    };
+    const fmt = (mins: number) =>
+      `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+    const set = new Set<string>();
+    for (const s of services) {
+      if (s.booking_mode === "shifts" && Array.isArray(s.shift_times) && s.shift_times.length) {
+        for (const t of s.shift_times) set.add(t.slice(0, 5));
+        continue;
+      }
+      if (!s.opening_time || !s.closing_time) continue;
+      const step = s.slot_duration_minutes ?? 30;
+      const open = toMinLocal(s.opening_time);
+      const close = toMinLocal(s.closing_time);
+      for (let m = open; m < close; m += step) set.add(fmt(m));
+    }
+    return Array.from(set).sort();
+  }, [scheduleCtx, v.reservation_date]);
+
+  const shiftsOnly = useMemo(() => {
+    if (!v.reservation_date) return false;
+    const services = effectiveDay(scheduleCtx, v.reservation_date).services;
+    return services.length > 0 && services.every((s) => s.booking_mode === "shifts");
+  }, [scheduleCtx, v.reservation_date]);
+
   // Compute capacity for the selected slot
   const toMin = (t: string) => {
     const [h, m] = t.slice(0, 5).split(":").map(Number);
@@ -535,7 +569,35 @@ export function ReservationDrawer({
               </div>
               <div className="space-y-1.5">
                 <Label>Hora <span className="text-terracotta">*</span></Label>
-                <Input type="time" value={(v.reservation_time ?? "").slice(0, 5)} onChange={(e) => setV({ ...v, reservation_time: e.target.value })} />
+                {shiftsOnly ? (
+                  <Select
+                    value={(v.reservation_time ?? "").slice(0, 5)}
+                    onValueChange={(val) => setV({ ...v, reservation_time: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={timeOptions.length ? "Selecciona turno" : "Sin turnos disponibles"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {timeOptions.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    type="time"
+                    list="reservation-time-options"
+                    value={(v.reservation_time ?? "").slice(0, 5)}
+                    onChange={(e) => setV({ ...v, reservation_time: e.target.value })}
+                  />
+                )}
+                {!shiftsOnly && timeOptions.length > 0 && (
+                  <datalist id="reservation-time-options">
+                    {timeOptions.map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
