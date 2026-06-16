@@ -33,6 +33,22 @@ function generatePassword(len = 16) {
   return chars.join("");
 }
 
+function isPasswordStrongEnough(value: string) {
+  return (
+    value.length >= 16 &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /\d/.test(value) &&
+    /[!@#$%&*?\-_=+]/.test(value)
+  );
+}
+
+function extractFunctionError(error: any) {
+  const message = String(error?.message ?? "");
+  const details = String(error?.context?.body ?? error?.context?._bodyText ?? "");
+  return `${message} ${details}`.trim();
+}
+
 export function RestaurantManagersPanel({ restaurantId }: { restaurantId: string }) {
   const [managers, setManagers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -66,14 +82,26 @@ export function RestaurantManagersPanel({ restaurantId }: { restaurantId: string
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!email.trim()) return toast.error("Introduce un email");
-    if (password.length < 8) return toast.error("Contraseña mínima de 8 caracteres");
+    if (!isPasswordStrongEnough(password)) {
+      setPassword(generatePassword());
+      return toast.error("La contraseña manual es demasiado débil. He generado una segura, vuelve a intentarlo.");
+    }
 
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("create-restaurant-admin", {
         body: { email: email.trim(), password, fullName: fullName.trim(), restaurantId },
       });
-      if (error) throw error;
+      if (error) {
+        const msg = extractFunctionError(error);
+        if (/weak|known|guess|pwned/i.test(msg)) {
+          setPassword(generatePassword());
+          toast.error("Esa contraseña aparece en filtraciones conocidas. He generado una nueva, vuelve a intentarlo.");
+          return;
+        }
+        toast.error(msg || "No se pudo crear");
+        return;
+      }
       if (!data?.ok) throw new Error(data?.error ?? "Error desconocido");
 
       setLastCreated({ email: email.trim(), password });
