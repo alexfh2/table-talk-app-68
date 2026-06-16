@@ -11,13 +11,30 @@ import type { Restaurant, Profile } from "@/lib/types";
 import { toast } from "sonner";
 import { Copy, KeyRound, RefreshCw, UserPlus } from "lucide-react";
 
-function generatePassword(len = 12) {
-  const chars = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  const arr = new Uint32Array(len);
-  crypto.getRandomValues(arr);
-  for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
-  return out;
+function generatePassword(len = 16) {
+  const lower = "abcdefghijkmnpqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const symbols = "!@#$%&*?-_=+";
+  const all = lower + upper + digits + symbols;
+  const pick = (set: string) => {
+    const a = new Uint32Array(1);
+    crypto.getRandomValues(a);
+    return set[a[0] % set.length];
+  };
+  // Guarantee at least one of each class
+  const chars = [pick(lower), pick(upper), pick(digits), pick(symbols)];
+  const rest = new Uint32Array(Math.max(len - chars.length, 4));
+  crypto.getRandomValues(rest);
+  for (let i = 0; i < rest.length; i++) chars.push(all[rest[i] % all.length]);
+  // Shuffle
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = new Uint32Array(1);
+    crypto.getRandomValues(j);
+    const k = j[0] % (i + 1);
+    [chars[i], chars[k]] = [chars[k], chars[i]];
+  }
+  return chars.join("");
 }
 
 export default function ManagersList() {
